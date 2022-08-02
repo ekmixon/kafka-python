@@ -66,7 +66,7 @@ class ConsumerPerformance(object):
                 record = bytes(bytearray(args.record_size))
                 producer = KafkaProducer(compression_type=args.fixture_compression,
                                          **props)
-                for i in range(args.num_records):
+                for _ in range(args.num_records):
                     producer.send(topic=args.topic, value=record)
                 producer.flush()
                 producer.close()
@@ -93,7 +93,7 @@ class ConsumerPerformance(object):
             print()
 
             records = 0
-            for msg in consumer:
+            for _ in consumer:
                 records += 1
                 if records >= args.num_records:
                     break
@@ -135,8 +135,7 @@ class StatsReporter(threading.Thread):
     def run(self):
         while self.event and not self.event.wait(self.interval):
             self.print_stats()
-        else:
-            self.print_final()
+        self.print_final()
 
 
 def get_args_parser():

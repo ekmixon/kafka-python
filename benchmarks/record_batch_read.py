@@ -67,9 +67,7 @@ def func(loops, magic):
         while records.has_next():
             batch = records.next_batch()
             batch.validate_crc()
-            for record in batch:
-                results.append(record.value)
-
+            results.extend(record.value for record in batch)
     res = pyperf.perf_counter() - t0
     finalize(results)
 

@@ -22,10 +22,7 @@ class DefaultPartitioner(object):
         :return: one of the values from all_partitions or available
         """
         if key is None:
-            if available:
-                return random.choice(available)
-            return random.choice(all_partitions)
-
+            return random.choice(available) if available else random.choice(all_partitions)
         idx = murmur2(key)
         idx &= 0x7fffffff
         idx %= len(all_partitions)

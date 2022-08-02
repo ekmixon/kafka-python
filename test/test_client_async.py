@@ -45,8 +45,10 @@ def test_bootstrap(mocker, conn):
     assert kwargs == cli.config
     conn.send.assert_called_once_with(MetadataRequest[0]([]), blocking=False)
     assert cli._bootstrap_fails == 0
-    assert cli.cluster.brokers() == set([BrokerMetadata(0, 'foo', 12, None),
-                                         BrokerMetadata(1, 'bar', 34, None)])
+    assert cli.cluster.brokers() == {
+        BrokerMetadata(0, 'foo', 12, None),
+        BrokerMetadata(1, 'bar', 34, None),
+    }
 
 
 def test_can_connect(cli, conn):
@@ -282,7 +284,7 @@ def test_set_topics(mocker):
     request_update.reset_mock()
     fut = cli.set_topics(['t1', 't2'])
     assert fut.is_done
-    assert fut.value == set(['t1', 't2'])
+    assert fut.value == {'t1', 't2'}
     request_update.assert_not_called()
 
     # replace 'non empty' with 'empty'

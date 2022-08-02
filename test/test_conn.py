@@ -32,8 +32,7 @@ def _socket(mocker):
 
 @pytest.fixture
 def conn(_socket, dns_lookup):
-    conn = BrokerConnection('localhost', 9092, socket.AF_INET)
-    return conn
+    return BrokerConnection('localhost', 9092, socket.AF_INET)
 
 
 @pytest.mark.parametrize("states", [
@@ -215,20 +214,20 @@ def test_close(conn):
 def test_collect_hosts__happy_path():
     hosts = "127.0.0.1:1234,127.0.0.1"
     results = collect_hosts(hosts)
-    assert set(results) == set([
+    assert set(results) == {
         ('127.0.0.1', 1234, socket.AF_INET),
         ('127.0.0.1', 9092, socket.AF_INET),
-    ])
+    }
 
 
 def test_collect_hosts__ipv6():
     hosts = "[localhost]:1234,[2001:1000:2000::1],[2001:1000:2000::1]:1234"
     results = collect_hosts(hosts)
-    assert set(results) == set([
+    assert set(results) == {
         ('localhost', 1234, socket.AF_INET6),
         ('2001:1000:2000::1', 9092, socket.AF_INET6),
         ('2001:1000:2000::1', 1234, socket.AF_INET6),
-    ])
+    }
 
 
 def test_collect_hosts__string_list():
@@ -241,23 +240,23 @@ def test_collect_hosts__string_list():
         '[2001::1]:1234',
     ]
     results = collect_hosts(hosts)
-    assert set(results) == set([
+    assert set(results) == {
         ('localhost', 1234, socket.AF_UNSPEC),
         ('localhost', 9092, socket.AF_UNSPEC),
         ('localhost', 9092, socket.AF_INET6),
         ('2001::1', 9092, socket.AF_INET6),
         ('2001::1', 9092, socket.AF_INET6),
         ('2001::1', 1234, socket.AF_INET6),
-    ])
+    }
 
 
 def test_collect_hosts__with_spaces():
     hosts = "localhost:1234, localhost"
     results = collect_hosts(hosts)
-    assert set(results) == set([
+    assert set(results) == {
         ('localhost', 1234, socket.AF_UNSPEC),
         ('localhost', 9092, socket.AF_UNSPEC),
-    ])
+    }
 
 
 def test_lookup_on_connect():

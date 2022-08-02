@@ -41,7 +41,7 @@ class KafkaProtocol(object):
         return self._correlation_id
 
     def _gen_client_id(self):
-        return 'kafka-python' + __version__
+        return f'kafka-python{__version__}'
 
     def send_request(self, request, correlation_id=None):
         """Encode and queue a kafka api request for sending.

@@ -116,7 +116,8 @@ class DefaultRecordBase(object):
             checker, name = codecs.has_zstd, "zstd"
         if not checker():
             raise UnsupportedCodecError(
-                "Libraries for {} compression codec not found".format(name))
+                f"Libraries for {name} compression codec not found"
+            )
 
 
 class DefaultRecordBatch(DefaultRecordBase, ABCRecordBatch):
@@ -239,15 +240,16 @@ class DefaultRecordBatch(DefaultRecordBase, ABCRecordBatch):
 
         header_count, pos = decode_varint(buffer, pos)
         if header_count < 0:
-            raise CorruptRecordException("Found invalid number of record "
-                                         "headers {}".format(header_count))
+            raise CorruptRecordException(
+                f"Found invalid number of record headers {header_count}"
+            )
+
         headers = []
         while header_count:
             # Header key is of type String, that can't be None
             h_key_len, pos = decode_varint(buffer, pos)
             if h_key_len < 0:
-                raise CorruptRecordException(
-                    "Invalid negative header key size {}".format(h_key_len))
+                raise CorruptRecordException(f"Invalid negative header key size {h_key_len}")
             h_key = buffer[pos: pos + h_key_len].decode("utf-8")
             pos += h_key_len
 
@@ -265,8 +267,9 @@ class DefaultRecordBatch(DefaultRecordBase, ABCRecordBatch):
         # validate whether we have read all header bytes in the current record
         if pos - start_pos != length:
             raise CorruptRecordException(
-                "Invalid record size: expected to read {} bytes in record "
-                "payload, but instead read {}".format(length, pos - start_pos))
+                f"Invalid record size: expected to read {length} bytes in record payload, but instead read {pos - start_pos}"
+            )
+
         self._pos = pos
 
         return DefaultRecord(
@@ -280,8 +283,9 @@ class DefaultRecordBatch(DefaultRecordBase, ABCRecordBatch):
         if self._next_record_index >= self._num_records:
             if self._pos != len(self._buffer):
                 raise CorruptRecordException(
-                    "{} unconsumed bytes after all records consumed".format(
-                        len(self._buffer) - self._pos))
+                    f"{len(self._buffer) - self._pos} unconsumed bytes after all records consumed"
+                )
+
             raise StopIteration
         try:
             msg = self._read_msg()
@@ -296,7 +300,7 @@ class DefaultRecordBatch(DefaultRecordBase, ABCRecordBatch):
 
     def validate_crc(self):
         assert self._decompressed is False, \
-            "Validate should be called before iteration"
+                "Validate should be called before iteration"
 
         crc = self.crc
         data_view = memoryview(self._buffer)[self.ATTRIBUTES_OFFSET:]
@@ -419,12 +423,10 @@ class DefaultRecordBatchBuilder(DefaultRecordBase, ABCRecordBatchBuilder):
             timestamp = type_int(time_time() * 1000)
         elif get_type(timestamp) != type_int:
             raise TypeError(timestamp)
-        if not (key is None or get_type(key) in byte_like):
-            raise TypeError(
-                "Not supported type for key: {}".format(type(key)))
-        if not (value is None or get_type(value) in byte_like):
-            raise TypeError(
-                "Not supported type for value: {}".format(type(value)))
+        if key is not None and get_type(key) not in byte_like:
+            raise TypeError(f"Not supported type for key: {type(key)}")
+        if value is not None and get_type(value) not in byte_like:
+            raise TypeError(f"Not supported type for value: {type(value)}")
 
         # We will always add the first message, so those will be set
         if self._first_timestamp is None:
@@ -512,30 +514,29 @@ class DefaultRecordBatchBuilder(DefaultRecordBase, ABCRecordBatchBuilder):
         struct.pack_into(">I", self._buffer, self.CRC_OFFSET, crc)
 
     def _maybe_compress(self):
-        if self._compression_type != self.CODEC_NONE:
-            self._assert_has_codec(self._compression_type)
-            header_size = self.HEADER_STRUCT.size
-            data = bytes(self._buffer[header_size:])
-            if self._compression_type == self.CODEC_GZIP:
-                compressed = gzip_encode(data)
-            elif self._compression_type == self.CODEC_SNAPPY:
-                compressed = snappy_encode(data)
-            elif self._compression_type == self.CODEC_LZ4:
-                compressed = lz4_encode(data)
-            elif self._compression_type == self.CODEC_ZSTD:
-                compressed = zstd_encode(data)
-            compressed_size = len(compressed)
-            if len(data) <= compressed_size:
-                # We did not get any benefit from compression, lets send
-                # uncompressed
-                return False
-            else:
-                # Trim bytearray to the required size
-                needed_size = header_size + compressed_size
-                del self._buffer[needed_size:]
-                self._buffer[header_size:needed_size] = compressed
-                return True
-        return False
+        if self._compression_type == self.CODEC_NONE:
+            return False
+        self._assert_has_codec(self._compression_type)
+        header_size = self.HEADER_STRUCT.size
+        data = bytes(self._buffer[header_size:])
+        if self._compression_type == self.CODEC_GZIP:
+            compressed = gzip_encode(data)
+        elif self._compression_type == self.CODEC_SNAPPY:
+            compressed = snappy_encode(data)
+        elif self._compression_type == self.CODEC_LZ4:
+            compressed = lz4_encode(data)
+        elif self._compression_type == self.CODEC_ZSTD:
+            compressed = zstd_encode(data)
+        compressed_size = len(compressed)
+        if len(data) <= compressed_size:
+            # We did not get any benefit from compression, lets send
+            # uncompressed
+            return False
+        # Trim bytearray to the required size
+        needed_size = header_size + compressed_size
+        del self._buffer[needed_size:]
+        self._buffer[header_size:needed_size] = compressed
+        return True
 
     def build(self):
         send_compressed = self._maybe_compress()

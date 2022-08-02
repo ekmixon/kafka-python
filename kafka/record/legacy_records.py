@@ -124,7 +124,8 @@ class LegacyRecordBase(object):
             checker, name = codecs.has_lz4, "lz4"
         if not checker():
             raise UnsupportedCodecError(
-                "Libraries for {} compression codec not found".format(name))
+                f"Libraries for {name} compression codec not found"
+            )
 
 
 class LegacyRecordBatch(ABCRecordBatch, LegacyRecordBase):
@@ -233,10 +234,7 @@ class LegacyRecordBatch(ABCRecordBatch, LegacyRecordBase):
         return key, value
 
     def __iter__(self):
-        if self._magic == 1:
-            key_offset = self.KEY_OFFSET_V1
-        else:
-            key_offset = self.KEY_OFFSET_V0
+        key_offset = self.KEY_OFFSET_V1 if self._magic == 1 else self.KEY_OFFSET_V0
         timestamp_type = self.timestamp_type
 
         if self.compression_type:
@@ -361,17 +359,13 @@ class LegacyRecordBatchBuilder(ABCRecordBatchBuilder, LegacyRecordBase):
         elif timestamp is None:
             timestamp = int(time.time() * 1000)
         elif type(timestamp) != int:
-            raise TypeError(
-                "`timestamp` should be int, but {} provided".format(
-                    type(timestamp)))
+            raise TypeError(f"`timestamp` should be int, but {type(timestamp)} provided")
         if not (key is None or
                 isinstance(key, (bytes, bytearray, memoryview))):
-            raise TypeError(
-                "Not supported type for key: {}".format(type(key)))
+            raise TypeError(f"Not supported type for key: {type(key)}")
         if not (value is None or
                 isinstance(value, (bytes, bytearray, memoryview))):
-            raise TypeError(
-                "Not supported type for value: {}".format(type(value)))
+            raise TypeError(f"Not supported type for value: {type(value)}")
 
         # Check if we have room for another message
         pos = len(self._buffer)
@@ -438,31 +432,31 @@ class LegacyRecordBatchBuilder(ABCRecordBatchBuilder, LegacyRecordBase):
         return crc
 
     def _maybe_compress(self):
-        if self._compression_type:
-            self._assert_has_codec(self._compression_type)
-            data = bytes(self._buffer)
-            if self._compression_type == self.CODEC_GZIP:
-                compressed = gzip_encode(data)
-            elif self._compression_type == self.CODEC_SNAPPY:
-                compressed = snappy_encode(data)
-            elif self._compression_type == self.CODEC_LZ4:
-                if self._magic == 0:
-                    compressed = lz4_encode_old_kafka(data)
-                else:
-                    compressed = lz4_encode(data)
-            size = self.size_in_bytes(
-                0, timestamp=0, key=None, value=compressed)
-            # We will try to reuse the same buffer if we have enough space
-            if size > len(self._buffer):
-                self._buffer = bytearray(size)
+        if not self._compression_type:
+            return False
+        self._assert_has_codec(self._compression_type)
+        data = bytes(self._buffer)
+        if self._compression_type == self.CODEC_GZIP:
+            compressed = gzip_encode(data)
+        elif self._compression_type == self.CODEC_SNAPPY:
+            compressed = snappy_encode(data)
+        elif self._compression_type == self.CODEC_LZ4:
+            if self._magic == 0:
+                compressed = lz4_encode_old_kafka(data)
             else:
-                del self._buffer[size:]
-            self._encode_msg(
-                start_pos=0,
-                offset=0, timestamp=0, key=None, value=compressed,
-                attributes=self._compression_type)
-            return True
-        return False
+                compressed = lz4_encode(data)
+        size = self.size_in_bytes(
+            0, timestamp=0, key=None, value=compressed)
+        # We will try to reuse the same buffer if we have enough space
+        if size > len(self._buffer):
+            self._buffer = bytearray(size)
+        else:
+            del self._buffer[size:]
+        self._encode_msg(
+            start_pos=0,
+            offset=0, timestamp=0, key=None, value=compressed,
+            attributes=self._compression_type)
+        return True
 
     def build(self):
         """Compress batch to be ready for send"""
@@ -495,10 +489,7 @@ class LegacyRecordBatchBuilder(ABCRecordBatchBuilder, LegacyRecordBase):
     @classmethod
     def record_overhead(cls, magic):
         assert magic in [0, 1], "Not supported magic"
-        if magic == 0:
-            return cls.RECORD_OVERHEAD_V0
-        else:
-            return cls.RECORD_OVERHEAD_V1
+        return cls.RECORD_OVERHEAD_V0 if magic == 0 else cls.RECORD_OVERHEAD_V1
 
     @classmethod
     def estimate_size_in_bytes(cls, magic, compression_type, key, value):

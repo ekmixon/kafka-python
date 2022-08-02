@@ -192,9 +192,8 @@ class KafkaAdminClient(object):
 
     def __init__(self, **configs):
         log.debug("Starting KafkaAdminClient with configuration: %s", configs)
-        extra_configs = set(configs).difference(self.DEFAULT_CONFIG)
-        if extra_configs:
-            raise KafkaConfigurationError("Unrecognized configs: {}".format(extra_configs))
+        if extra_configs := set(configs).difference(self.DEFAULT_CONFIG):
+            raise KafkaConfigurationError(f"Unrecognized configs: {extra_configs}")
 
         self.config = copy.copy(self.DEFAULT_CONFIG)
         self.config.update(configs)
@@ -247,16 +246,18 @@ class KafkaAdminClient(object):
         api_key = operation[0].API_KEY
         if broker_api_versions is None or api_key not in broker_api_versions:
             raise IncompatibleBrokerVersion(
-                "Kafka broker does not support the '{}' Kafka protocol."
-                .format(operation[0].__name__))
+                f"Kafka broker does not support the '{operation[0].__name__}' Kafka protocol."
+            )
+
         min_version, max_version = broker_api_versions[api_key]
         version = min(len(operation) - 1, max_version)
         if version < min_version:
             # max library version is less than min broker version. Currently,
             # no Kafka versions specify a min msg version. Maybe in the future?
             raise IncompatibleBrokerVersion(
-                "No version of the '{}' Kafka protocol is supported by both the client and broker."
-                .format(operation[0].__name__))
+                f"No version of the '{operation[0].__name__}' Kafka protocol is supported by both the client and broker."
+            )
+
         return version
 
     def _validate_timeout(self, timeout_ms):
@@ -270,25 +271,26 @@ class KafkaAdminClient(object):
     def _refresh_controller_id(self):
         """Determine the Kafka cluster controller."""
         version = self._matching_api_version(MetadataRequest)
-        if 1 <= version <= 6:
-            request = MetadataRequest[version]()
-            future = self._send_request_to_node(self._client.least_loaded_node(), request)
-
-            self._wait_for_futures([future])
-
-            response = future.value
-            controller_id = response.controller_id
-            # verify the controller is new enough to support our requests
-            controller_version = self._client.check_version(controller_id, timeout=(self.config['api_version_auto_timeout_ms'] / 1000))
-            if controller_version < (0, 10, 0):
-                raise IncompatibleBrokerVersion(
-                    "The controller appears to be running Kafka {}. KafkaAdminClient requires brokers >= 0.10.0.0."
-                    .format(controller_version))
-            self._controller_id = controller_id
-        else:
+        if not 1 <= version <= 6:
             raise UnrecognizedBrokerVersion(
-                "Kafka Admin interface cannot determine the controller using MetadataRequest_v{}."
-                .format(version))
+                f"Kafka Admin interface cannot determine the controller using MetadataRequest_v{version}."
+            )
+
+        request = MetadataRequest[version]()
+        future = self._send_request_to_node(self._client.least_loaded_node(), request)
+
+        self._wait_for_futures([future])
+
+        response = future.value
+        controller_id = response.controller_id
+        # verify the controller is new enough to support our requests
+        controller_version = self._client.check_version(controller_id, timeout=(self.config['api_version_auto_timeout_ms'] / 1000))
+        if controller_version < (0, 10, 0):
+            raise IncompatibleBrokerVersion(
+                f"The controller appears to be running Kafka {controller_version}. KafkaAdminClient requires brokers >= 0.10.0.0."
+            )
+
+        self._controller_id = controller_id
 
     def _find_coordinator_id_send_request(self, group_id):
         """Send a FindCoordinatorRequest to a broker.
@@ -308,8 +310,9 @@ class KafkaAdminClient(object):
             request = GroupCoordinatorRequest[version](group_id)
         else:
             raise NotImplementedError(
-                "Support for GroupCoordinatorRequest_v{} has not yet been added to KafkaAdminClient."
-                .format(version))
+                f"Support for GroupCoordinatorRequest_v{version} has not yet been added to KafkaAdminClient."
+            )
+
         return self._send_request_to_node(self._client.least_loaded_node(), request)
 
     def _find_coordinator_id_process_response(self, response):
@@ -318,18 +321,16 @@ class KafkaAdminClient(object):
         :param response: a FindCoordinatorResponse.
         :return: The node_id of the broker that is the coordinator.
         """
-        if response.API_VERSION <= 0:
-            error_type = Errors.for_code(response.error_code)
-            if error_type is not Errors.NoError:
+        if response.API_VERSION > 0:
+            raise NotImplementedError(
+                f"Support for FindCoordinatorRequest_v{response.API_VERSION} has not yet been added to KafkaAdminClient."
+            )
+
+        error_type = Errors.for_code(response.error_code)
+        if error_type is not Errors.NoError:
                 # Note: When error_type.retriable, Java will retry... see
                 # KafkaAdminClient's handleFindCoordinatorError method
-                raise error_type(
-                    "FindCoordinatorRequest failed with response '{}'."
-                    .format(response))
-        else:
-            raise NotImplementedError(
-                "Support for FindCoordinatorRequest_v{} has not yet been added to KafkaAdminClient."
-                .format(response.API_VERSION))
+            raise error_type(f"FindCoordinatorRequest failed with response '{response}'.")
         return response.coordinator_id
 
     def _find_coordinator_ids(self, group_ids):
@@ -349,11 +350,10 @@ class KafkaAdminClient(object):
             for group_id in group_ids
         }
         self._wait_for_futures(groups_futures.values())
-        groups_coordinators = {
+        return {
             group_id: self._find_coordinator_id_process_response(future.value)
             for group_id, future in groups_futures.items()
         }
-        return groups_coordinators
 
     def _send_request_to_node(self, node_id, request):
         """Send a Kafka protocol message to a specific broker.
@@ -408,9 +408,7 @@ class KafkaAdminClient(object):
                     self._refresh_controller_id()
                     break
                 elif error_type is not Errors.NoError:
-                    raise error_type(
-                        "Request '{}' failed with response '{}'."
-                        .format(request, response))
+                    raise error_type(f"Request '{request}' failed with response '{response}'.")
             else:
                 return response
         raise RuntimeError("This should never happen, please file a bug with full stacktrace if encountered")
@@ -421,12 +419,8 @@ class KafkaAdminClient(object):
             new_topic.name,
             new_topic.num_partitions,
             new_topic.replication_factor,
-            [
-                (partition_id, replicas) for partition_id, replicas in new_topic.replica_assignments.items()
-            ],
-            [
-                (config_key, config_value) for config_key, config_value in new_topic.topic_configs.items()
-            ]
+            list(new_topic.replica_assignments.items()),
+            list(new_topic.topic_configs.items()),
         )
 
     def create_topics(self, new_topics, timeout_ms=None, validate_only=False):
@@ -444,8 +438,9 @@ class KafkaAdminClient(object):
         if version == 0:
             if validate_only:
                 raise IncompatibleBrokerVersion(
-                    "validate_only requires CreateTopicsRequest >= v1, which is not supported by Kafka {}."
-                    .format(self.config['api_version']))
+                    f"validate_only requires CreateTopicsRequest >= v1, which is not supported by Kafka {self.config['api_version']}."
+                )
+
             request = CreateTopicsRequest[version](
                 create_topic_requests=[self._convert_new_topic_request(new_topic) for new_topic in new_topics],
                 timeout=timeout_ms
@@ -458,8 +453,9 @@ class KafkaAdminClient(object):
             )
         else:
             raise NotImplementedError(
-                "Support for CreateTopics v{} has not yet been added to KafkaAdminClient."
-                .format(version))
+                f"Support for CreateTopics v{version} has not yet been added to KafkaAdminClient."
+            )
+
         # TODO convert structs to a more pythonic interface
         # TODO raise exceptions if errors
         return self._send_request_to_controller(request)
@@ -474,17 +470,16 @@ class KafkaAdminClient(object):
         """
         version = self._matching_api_version(DeleteTopicsRequest)
         timeout_ms = self._validate_timeout(timeout_ms)
-        if version <= 3:
-            request = DeleteTopicsRequest[version](
-                topics=topics,
-                timeout=timeout_ms
-            )
-            response = self._send_request_to_controller(request)
-        else:
+        if version > 3:
             raise NotImplementedError(
-                "Support for DeleteTopics v{} has not yet been added to KafkaAdminClient."
-                .format(version))
-        return response
+                f"Support for DeleteTopics v{version} has not yet been added to KafkaAdminClient."
+            )
+
+        request = DeleteTopicsRequest[version](
+            topics=topics,
+            timeout=timeout_ms
+        )
+        return self._send_request_to_controller(request)
 
 
     def _get_cluster_metadata(self, topics=None, auto_topic_creation=False):
@@ -495,9 +490,9 @@ class KafkaAdminClient(object):
         if version <= 3:
             if auto_topic_creation:
                 raise IncompatibleBrokerVersion(
-                    "auto_topic_creation requires MetadataRequest >= v4, which"
-                    " is not supported by Kafka {}"
-                    .format(self.config['api_version']))
+                    f"auto_topic_creation requires MetadataRequest >= v4, which is not supported by Kafka {self.config['api_version']}"
+                )
+
 
             request = MetadataRequest[version](topics=topics)
         elif version <= 5:
@@ -543,9 +538,9 @@ class KafkaAdminClient(object):
                 resource_type, resource_name, resource_pattern_type, acls = resources
             else:
                 raise NotImplementedError(
-                    "Support for DescribeAcls Response v{} has not yet been added to KafkaAdmin."
-                        .format(version)
+                    f"Support for DescribeAcls Response v{version} has not yet been added to KafkaAdmin."
                 )
+
             for acl in acls:
                 principal, host, operation, permission_type = acl
                 conv_acl = ACL(
@@ -597,9 +592,9 @@ class KafkaAdminClient(object):
             )
         else:
             raise NotImplementedError(
-                "Support for DescribeAcls v{} has not yet been added to KafkaAdmin."
-                    .format(version)
+                f"Support for DescribeAcls v{version} has not yet been added to KafkaAdmin."
             )
+
 
         future = self._send_request_to_node(self._client.least_loaded_node(), request)
         self._wait_for_futures([future])
@@ -608,9 +603,7 @@ class KafkaAdminClient(object):
         error_type = Errors.for_code(response.error_code)
         if error_type is not Errors.NoError:
             # optionally we could retry if error_type.retriable
-            raise error_type(
-                "Request '{}' failed with response '{}'."
-                    .format(request, response))
+            raise error_type(f"Request '{request}' failed with response '{response}'.")
 
         return self._convert_describe_acls_response_to_acls(response)
 
@@ -646,16 +639,15 @@ class KafkaAdminClient(object):
         creations_error = []
         creations_success = []
         for i, creations in enumerate(create_response.creation_responses):
-            if version <= 1:
-                error_code, error_message = creations
-                acl = acls[i]
-                error = Errors.for_code(error_code)
-            else:
+            if version > 1:
                 raise NotImplementedError(
-                    "Support for DescribeAcls Response v{} has not yet been added to KafkaAdmin."
-                        .format(version)
+                    f"Support for DescribeAcls Response v{version} has not yet been added to KafkaAdmin."
                 )
 
+
+            error_code, error_message = creations
+            acl = acls[i]
+            error = Errors.for_code(error_code)
             if error is Errors.NoError:
                 creations_success.append(acl)
             else:
@@ -688,9 +680,9 @@ class KafkaAdminClient(object):
             )
         else:
             raise NotImplementedError(
-                "Support for CreateAcls v{} has not yet been added to KafkaAdmin."
-                    .format(version)
+                f"Support for CreateAcls v{version} has not yet been added to KafkaAdmin."
             )
+
 
         future = self._send_request_to_node(self._client.least_loaded_node(), request)
         self._wait_for_futures([future])
@@ -737,9 +729,9 @@ class KafkaAdminClient(object):
                     error_code, error_message, resource_type, resource_name, resource_pattern_type, principal, host, operation, permission_type = acl
                 else:
                     raise NotImplementedError(
-                        "Support for DescribeAcls Response v{} has not yet been added to KafkaAdmin."
-                            .format(version)
+                        f"Support for DescribeAcls Response v{version} has not yet been added to KafkaAdmin."
                     )
+
                 acl_error = Errors.for_code(error_code)
                 conv_acl = ACL(
                     principal=principal,
@@ -782,9 +774,9 @@ class KafkaAdminClient(object):
             )
         else:
             raise NotImplementedError(
-                "Support for DeleteAcls v{} has not yet been added to KafkaAdmin."
-                    .format(version)
+                f"Support for DeleteAcls v{version} has not yet been added to KafkaAdmin."
             )
+
 
         future = self._send_request_to_node(self._client.least_loaded_node(), request)
         self._wait_for_futures([future])
@@ -830,10 +822,11 @@ class KafkaAdminClient(object):
         if version == 0:
             if include_synonyms:
                 raise IncompatibleBrokerVersion(
-                    "include_synonyms requires DescribeConfigsRequest >= v1, which is not supported by Kafka {}."
-                        .format(self.config['api_version']))
+                    f"include_synonyms requires DescribeConfigsRequest >= v1, which is not supported by Kafka {self.config['api_version']}."
+                )
 
-            if len(broker_resources) > 0:
+
+            if broker_resources:
                 for broker_resource in broker_resources:
                     try:
                         broker_id = int(broker_resource[1])
@@ -845,14 +838,14 @@ class KafkaAdminClient(object):
                         DescribeConfigsRequest[version](resources=[broker_resource])
                     ))
 
-            if len(topic_resources) > 0:
+            if topic_resources:
                 futures.append(self._send_request_to_node(
                     self._client.least_loaded_node(),
                     DescribeConfigsRequest[version](resources=topic_resources)
                 ))
 
         elif version <= 2:
-            if len(broker_resources) > 0:
+            if broker_resources:
                 for broker_resource in broker_resources:
                     try:
                         broker_id = int(broker_resource[1])
@@ -866,14 +859,16 @@ class KafkaAdminClient(object):
                             include_synonyms=include_synonyms)
                     ))
 
-            if len(topic_resources) > 0:
+            if topic_resources:
                 futures.append(self._send_request_to_node(
                     self._client.least_loaded_node(),
                     DescribeConfigsRequest[version](resources=topic_resources, include_synonyms=include_synonyms)
                 ))
         else:
             raise NotImplementedError(
-                "Support for DescribeConfigs v{} has not yet been added to KafkaAdminClient.".format(version))
+                f"Support for DescribeConfigs v{version} has not yet been added to KafkaAdminClient."
+            )
+
 
         self._wait_for_futures(futures)
         return [f.value for f in futures]
@@ -883,9 +878,7 @@ class KafkaAdminClient(object):
         return (
             config_resource.resource_type,
             config_resource.name,
-            [
-                (config_key, config_value) for config_key, config_value in config_resource.configs.items()
-            ]
+            list(config_resource.configs.items()),
         )
 
     def alter_configs(self, config_resources):
@@ -907,8 +900,9 @@ class KafkaAdminClient(object):
             )
         else:
             raise NotImplementedError(
-                "Support for AlterConfigs v{} has not yet been added to KafkaAdminClient."
-                .format(version))
+                f"Support for AlterConfigs v{version} has not yet been added to KafkaAdminClient."
+            )
+
         # TODO the Java client has the note:
         # // We must make a separate AlterConfigs request for every BROKER resource we want to alter
         # // and send the request to that specific broker. Other resources are grouped together into
@@ -918,8 +912,7 @@ class KafkaAdminClient(object):
         future = self._send_request_to_node(self._client.least_loaded_node(), request)
 
         self._wait_for_futures([future])
-        response = future.value
-        return response
+        return future.value
 
     # alter replica logs dir protocol not yet implemented
     # Note: have to lookup the broker with the replica assignment and send the request to that broker
@@ -957,8 +950,9 @@ class KafkaAdminClient(object):
             )
         else:
             raise NotImplementedError(
-                "Support for CreatePartitions v{} has not yet been added to KafkaAdminClient."
-                .format(version))
+                f"Support for CreatePartitions v{version} has not yet been added to KafkaAdminClient."
+            )
+
         return self._send_request_to_controller(request)
 
     # delete records protocol not yet implemented
@@ -988,10 +982,9 @@ class KafkaAdminClient(object):
         if version <= 2:
             if include_authorized_operations:
                 raise IncompatibleBrokerVersion(
-                    "include_authorized_operations requests "
-                    "DescribeGroupsRequest >= v3, which is not "
-                    "supported by Kafka {}".format(version)
+                    f"include_authorized_operations requests DescribeGroupsRequest >= v3, which is not supported by Kafka {version}"
                 )
+
             # Note: KAFKA-6788 A potential optimization is to group the
             # request per coordinator and send one request with a list of
             # all consumer groups. Java still hasn't implemented this
@@ -1005,8 +998,9 @@ class KafkaAdminClient(object):
             )
         else:
             raise NotImplementedError(
-                "Support for DescribeGroupsRequest_v{} has not yet been added to KafkaAdminClient."
-                .format(version))
+                f"Support for DescribeGroupsRequest_v{version} has not yet been added to KafkaAdminClient."
+            )
+
         return self._send_request_to_node(group_coordinator_id, request)
 
     def _describe_consumer_groups_process_response(self, response):
@@ -1051,13 +1045,12 @@ class KafkaAdminClient(object):
             error_type = Errors.for_code(error_code)
             # Java has the note: KAFKA-6789, we can retry based on the error code
             if error_type is not Errors.NoError:
-                raise error_type(
-                    "DescribeGroupsResponse failed with response '{}'."
-                    .format(response))
+                raise error_type(f"DescribeGroupsResponse failed with response '{response}'.")
         else:
             raise NotImplementedError(
-                "Support for DescribeGroupsResponse_v{} has not yet been added to KafkaAdminClient."
-                .format(response.API_VERSION))
+                f"Support for DescribeGroupsResponse_v{response.API_VERSION} has not yet been added to KafkaAdminClient."
+            )
+
         return group_description
 
     def describe_consumer_groups(self, group_ids, group_coordinator_id=None, include_authorized_operations=False):
@@ -1115,22 +1108,21 @@ class KafkaAdminClient(object):
             request = ListGroupsRequest[version]()
         else:
             raise NotImplementedError(
-                "Support for ListGroupsRequest_v{} has not yet been added to KafkaAdminClient."
-                .format(version))
+                f"Support for ListGroupsRequest_v{version} has not yet been added to KafkaAdminClient."
+            )
+
         return self._send_request_to_node(broker_id, request)
 
     def _list_consumer_groups_process_response(self, response):
         """Process a ListGroupsResponse into a list of groups."""
-        if response.API_VERSION <= 2:
-            error_type = Errors.for_code(response.error_code)
-            if error_type is not Errors.NoError:
-                raise error_type(
-                    "ListGroupsRequest failed with response '{}'."
-                    .format(response))
-        else:
+        if response.API_VERSION > 2:
             raise NotImplementedError(
-                "Support for ListGroupsResponse_v{} has not yet been added to KafkaAdminClient."
-                .format(response.API_VERSION))
+                f"Support for ListGroupsResponse_v{response.API_VERSION} has not yet been added to KafkaAdminClient."
+            )
+
+        error_type = Errors.for_code(response.error_code)
+        if error_type is not Errors.NoError:
+            raise error_type(f"ListGroupsRequest failed with response '{response}'.")
         return response.groups
 
     def list_consumer_groups(self, broker_ids=None):
@@ -1182,26 +1174,26 @@ class KafkaAdminClient(object):
         :return: A message future
         """
         version = self._matching_api_version(OffsetFetchRequest)
-        if version <= 3:
-            if partitions is None:
-                if version <= 1:
-                    raise ValueError(
-                        """OffsetFetchRequest_v{} requires specifying the
+        if version > 3:
+            raise NotImplementedError(
+                f"Support for OffsetFetchRequest_v{version} has not yet been added to KafkaAdminClient."
+            )
+
+        if partitions is None:
+            if version <= 1:
+                raise ValueError(
+                    """OffsetFetchRequest_v{} requires specifying the
                         partitions for which to fetch offsets. Omitting the
                         partitions is only supported on brokers >= 0.10.2.
                         For details, see KIP-88.""".format(version))
-                topics_partitions = None
-            else:
-                # transform from [TopicPartition("t1", 1), TopicPartition("t1", 2)] to [("t1", [1, 2])]
-                topics_partitions_dict = defaultdict(set)
-                for topic, partition in partitions:
-                    topics_partitions_dict[topic].add(partition)
-                topics_partitions = list(six.iteritems(topics_partitions_dict))
-            request = OffsetFetchRequest[version](group_id, topics_partitions)
+            topics_partitions = None
         else:
-            raise NotImplementedError(
-                "Support for OffsetFetchRequest_v{} has not yet been added to KafkaAdminClient."
-                .format(version))
+            # transform from [TopicPartition("t1", 1), TopicPartition("t1", 2)] to [("t1", [1, 2])]
+            topics_partitions_dict = defaultdict(set)
+            for topic, partition in partitions:
+                topics_partitions_dict[topic].add(partition)
+            topics_partitions = list(six.iteritems(topics_partitions_dict))
+        request = OffsetFetchRequest[version](group_id, topics_partitions)
         return self._send_request_to_node(group_coordinator_id, request)
 
     def _list_consumer_group_offsets_process_response(self, response):
@@ -1211,32 +1203,30 @@ class KafkaAdminClient(object):
         :return: A dictionary composed of TopicPartition keys and
             OffsetAndMetadata values.
         """
-        if response.API_VERSION <= 3:
+        if response.API_VERSION > 3:
+            raise NotImplementedError(
+                f"Support for OffsetFetchResponse_v{response.API_VERSION} has not yet been added to KafkaAdminClient."
+            )
 
             # OffsetFetchResponse_v1 lacks a top-level error_code
-            if response.API_VERSION > 1:
-                error_type = Errors.for_code(response.error_code)
-                if error_type is not Errors.NoError:
+        if response.API_VERSION > 1:
+            error_type = Errors.for_code(response.error_code)
+            if error_type is not Errors.NoError:
                     # optionally we could retry if error_type.retriable
-                    raise error_type(
-                        "OffsetFetchResponse failed with response '{}'."
-                        .format(response))
+                raise error_type(f"OffsetFetchResponse failed with response '{response}'.")
 
-            # transform response into a dictionary with TopicPartition keys and
-            # OffsetAndMetadata values--this is what the Java AdminClient returns
-            offsets = {}
-            for topic, partitions in response.topics:
-                for partition, offset, metadata, error_code in partitions:
-                    error_type = Errors.for_code(error_code)
-                    if error_type is not Errors.NoError:
-                        raise error_type(
-                            "Unable to fetch consumer group offsets for topic {}, partition {}"
-                            .format(topic, partition))
-                    offsets[TopicPartition(topic, partition)] = OffsetAndMetadata(offset, metadata)
-        else:
-            raise NotImplementedError(
-                "Support for OffsetFetchResponse_v{} has not yet been added to KafkaAdminClient."
-                .format(response.API_VERSION))
+        # transform response into a dictionary with TopicPartition keys and
+        # OffsetAndMetadata values--this is what the Java AdminClient returns
+        offsets = {}
+        for topic, partitions in response.topics:
+            for partition, offset, metadata, error_code in partitions:
+                error_type = Errors.for_code(error_code)
+                if error_type is not Errors.NoError:
+                    raise error_type(
+                        f"Unable to fetch consumer group offsets for topic {topic}, partition {partition}"
+                    )
+
+                offsets[TopicPartition(topic, partition)] = OffsetAndMetadata(offset, metadata)
         return offsets
 
     def list_consumer_group_offsets(self, group_id, group_coordinator_id=None,
@@ -1311,14 +1301,15 @@ class KafkaAdminClient(object):
 
     def _convert_delete_groups_response(self, response):
         if response.API_VERSION <= 1:
-            results = []
-            for group_id, error_code in response.results:
-                results.append((group_id, Errors.for_code(error_code)))
-            return results
+            return [
+                (group_id, Errors.for_code(error_code))
+                for group_id, error_code in response.results
+            ]
+
         else:
             raise NotImplementedError(
-                "Support for DeleteGroupsResponse_v{} has not yet been added to KafkaAdminClient."
-                    .format(response.API_VERSION))
+                f"Support for DeleteGroupsResponse_v{response.API_VERSION} has not yet been added to KafkaAdminClient."
+            )
 
     def _delete_consumer_groups_send_request(self, group_ids, group_coordinator_id):
         """Send a DeleteGroups request to a broker.
@@ -1333,8 +1324,9 @@ class KafkaAdminClient(object):
             request = DeleteGroupsRequest[version](group_ids)
         else:
             raise NotImplementedError(
-                "Support for DeleteGroupsRequest_v{} has not yet been added to KafkaAdminClient."
-                    .format(version))
+                f"Support for DeleteGroupsRequest_v{version} has not yet been added to KafkaAdminClient."
+            )
+
         return self._send_request_to_node(group_coordinator_id, request)
 
     def _wait_for_futures(self, futures):

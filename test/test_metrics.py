@@ -409,7 +409,7 @@ def test_Percentiles(metrics):
     assert abs(p50.value() - 50) < 1.0
     assert abs(p75.value() - 75) < 1.0
 
-    for i in range(buckets):
+    for _ in range(buckets):
         sensor.record(0.0)
 
     assert p25.value() < 1.0
@@ -427,7 +427,7 @@ def test_rate_windowing(mocker, time_keeper, metrics):
     sum_val = 0
     count = config.samples - 1
     # Advance 1 window after every record
-    for i in range(count):
+    for _ in range(count):
         sensor.record(100)
         sum_val += 100
         time_keeper.sleep(config.time_window_ms / 1000.0)
@@ -469,7 +469,7 @@ def test_reporter(metrics):
 
     for key in list(expected.keys()):
         metrics = expected.pop(key)
-        expected['foo.%s' % (key,)] = metrics
+        expected[f'foo.{key}'] = metrics
     assert expected == foo_reporter.snapshot()
 
 

@@ -102,5 +102,4 @@ class MetricName(object):
         return not self.__eq__(other)
 
     def __str__(self):
-        return 'MetricName(name=%s, group=%s, description=%s, tags=%s)' % (
-            self.name, self.group, self.description, self.tags)
+        return f'MetricName(name={self.name}, group={self.group}, description={self.description}, tags={self.tags})'

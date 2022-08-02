@@ -99,14 +99,19 @@ class ConsumerCoordinator(BaseCoordinator):
             self.config['default_offset_commit_callback'] = self._default_offset_commit_callback
 
         if self.config['group_id'] is not None:
-            if self.config['api_version'] >= (0, 9):
-                if not self.config['assignors']:
-                    raise Errors.KafkaConfigurationError('Coordinator requires assignors')
-            if self.config['api_version'] < (0, 10, 1):
-                if self.config['max_poll_interval_ms'] != self.config['session_timeout_ms']:
-                    raise Errors.KafkaConfigurationError("Broker version %s does not support "
-                                                         "different values for max_poll_interval_ms "
-                                                         "and session_timeout_ms")
+            if (
+                self.config['api_version'] >= (0, 9)
+                and not self.config['assignors']
+            ):
+                raise Errors.KafkaConfigurationError('Coordinator requires assignors')
+            if (
+                self.config['api_version'] < (0, 10, 1)
+                and self.config['max_poll_interval_ms']
+                != self.config['session_timeout_ms']
+            ):
+                raise Errors.KafkaConfigurationError("Broker version %s does not support "
+                                                     "different values for max_poll_interval_ms "
+                                                     "and session_timeout_ms")
 
         if self.config['enable_auto_commit']:
             if self.config['api_version'] < (0, 8, 1):
@@ -162,10 +167,11 @@ class ConsumerCoordinator(BaseCoordinator):
             raise Errors.TopicAuthorizationFailedError(cluster.unauthorized_topics)
 
         if self._subscription.subscribed_pattern:
-            topics = []
-            for topic in cluster.topics(self.config['exclude_internal_topics']):
-                if self._subscription.subscribed_pattern.match(topic):
-                    topics.append(topic)
+            topics = [
+                topic
+                for topic in cluster.topics(self.config['exclude_internal_topics'])
+                if self._subscription.subscribed_pattern.match(topic)
+            ]
 
             if set(topics) != self._subscription.subscription:
                 self._subscription.change_subscription(topics)
@@ -205,10 +211,14 @@ class ConsumerCoordinator(BaseCoordinator):
         return metadata_snapshot
 
     def _lookup_assignor(self, name):
-        for assignor in self.config['assignors']:
-            if assignor.name == name:
-                return assignor
-        return None
+        return next(
+            (
+                assignor
+                for assignor in self.config['assignors']
+                if assignor.name == name
+            ),
+            None,
+        )
 
     def _on_join_complete(self, generation, member_id, protocol,
                           member_assignment_bytes):
@@ -218,7 +228,10 @@ class ConsumerCoordinator(BaseCoordinator):
             self._assignment_snapshot = None
 
         assignor = self._lookup_assignor(protocol)
-        assert assignor, 'Coordinator selected invalid assignment protocol: %s' % (protocol,)
+        assert (
+            assignor
+        ), f'Coordinator selected invalid assignment protocol: {protocol}'
+
 
         assignment = ConsumerProtocol.ASSIGNMENT.decode(member_assignment_bytes)
 
@@ -229,7 +242,7 @@ class ConsumerCoordinator(BaseCoordinator):
         try:
             self._subscription.assign_from_subscribed(assignment.partitions())
         except ValueError as e:
-            log.warning("%s. Probably due to a deleted topic. Requesting Re-join" % e)
+            log.warning(f"{e}. Probably due to a deleted topic. Requesting Re-join")
             self.request_rejoin()
 
         # give the assignor a chance to update internal state
@@ -305,7 +318,7 @@ class ConsumerCoordinator(BaseCoordinator):
 
     def _perform_assignment(self, leader_id, assignment_strategy, members):
         assignor = self._lookup_assignor(assignment_strategy)
-        assert assignor, 'Invalid assignment protocol: %s' % (assignment_strategy,)
+        assert assignor, f'Invalid assignment protocol: {assignment_strategy}'
         member_metadata = {}
         all_subscribed_topics = set()
         for member_id, metadata_bytes in members:
@@ -335,10 +348,7 @@ class ConsumerCoordinator(BaseCoordinator):
 
         log.debug("Finished assignment for group %s: %s", self.group_id, assignments)
 
-        group_assignment = {}
-        for member_id, assignment in six.iteritems(assignments):
-            group_assignment[member_id] = assignment
-        return group_assignment
+        return dict(six.iteritems(assignments))
 
     def _on_join_prepare(self, generation, member_id):
         # commit offsets prior to rebalance if auto-commit enabled
@@ -812,7 +822,7 @@ class ConsumerCoordinator(BaseCoordinator):
 class ConsumerCoordinatorMetrics(object):
     def __init__(self, metrics, metric_group_prefix, subscription):
         self.metrics = metrics
-        self.metric_group_name = '%s-coordinator-metrics' % (metric_group_prefix,)
+        self.metric_group_name = f'{metric_group_prefix}-coordinator-metrics'
 
         self.commit_latency = metrics.sensor('commit-latency')
         self.commit_latency.add(metrics.metric_name(

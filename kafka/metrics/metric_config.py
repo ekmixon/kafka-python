@@ -20,7 +20,7 @@ class MetricConfig(object):
         self.event_window = event_window
         self.time_window_ms = time_window_ms
         # tags should be OrderedDict (not supported in py26)
-        self.tags = tags if tags else {}
+        self.tags = tags or {}
 
     @property
     def samples(self):

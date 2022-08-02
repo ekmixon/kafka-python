@@ -21,6 +21,6 @@ class TestKafkaConsumer:
         consumer = KafkaConsumer('foo', api_version=(0, 10))
         sub = consumer.subscription()
         assert sub is not consumer.subscription()
-        assert sub == set(['foo'])
+        assert sub == {'foo'}
         sub.add('fizz')
-        assert consumer.subscription() == set(['foo'])
+        assert consumer.subscription() == {'foo'}

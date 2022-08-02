@@ -61,12 +61,19 @@ class ProducerBatch(object):
 
         self.max_record_size = max(self.max_record_size, metadata.size)
         self.last_append = time.time()
-        future = FutureRecordMetadata(self.produce_future, metadata.offset,
-                                      metadata.timestamp, metadata.crc,
-                                      len(key) if key is not None else -1,
-                                      len(value) if value is not None else -1,
-                                      sum(len(h_key.encode("utf-8")) + len(h_val) for h_key, h_val in headers) if headers else -1)
-        return future
+        return FutureRecordMetadata(
+            self.produce_future,
+            metadata.offset,
+            metadata.timestamp,
+            metadata.crc,
+            len(key) if key is not None else -1,
+            len(value) if value is not None else -1,
+            sum(
+                len(h_key.encode("utf-8")) + len(h_val) for h_key, h_val in headers
+            )
+            if headers
+            else -1,
+        )
 
     def done(self, base_offset=None, timestamp_ms=None, exception=None, log_start_offset=None, global_error=None):
         level = logging.DEBUG if exception is None else logging.WARNING
@@ -109,9 +116,14 @@ class ProducerBatch(object):
 
         if error:
             self.records.close()
-            self.done(-1, None, Errors.KafkaTimeoutError(
-                "Batch for %s containing %s record(s) expired: %s" % (
-                self.topic_partition, self.records.next_offset(), error)))
+            self.done(
+                -1,
+                None,
+                Errors.KafkaTimeoutError(
+                    f"Batch for {self.topic_partition} containing {self.records.next_offset()} record(s) expired: {error}"
+                ),
+            )
+
             return True
         return False
 
@@ -306,7 +318,7 @@ class RecordAccumulator(object):
                 # in accumulator for more than request_timeout_ms
                 dq = self._batches[tp]
                 for batch in dq:
-                    is_full = bool(bool(batch != dq[-1]) or batch.records.is_full())
+                    is_full = bool(batch != dq[-1] or batch.records.is_full())
                     # check if the batch is expired
                     if batch.maybe_expire(request_timeout_ms,
                                           self.config['retry_backoff_ms'],
@@ -382,7 +394,7 @@ class RecordAccumulator(object):
         unknown_leaders_exist = False
         now = time.time()
 
-        exhausted = bool(self._free.queued() > 0)
+        exhausted = self._free.queued() > 0
         # several threads are accessing self._batches -- to simplify
         # concurrent access, we iterate over a snapshot of partitions
         # and lock each partition separately as needed
@@ -392,11 +404,8 @@ class RecordAccumulator(object):
             if leader is None or leader == -1:
                 unknown_leaders_exist = True
                 continue
-            elif leader in ready_nodes:
+            elif leader in ready_nodes or tp in self.muted:
                 continue
-            elif tp in self.muted:
-                continue
-
             with self._tp_locks[tp]:
                 dq = self._batches[tp]
                 if not dq:
@@ -404,13 +413,12 @@ class RecordAccumulator(object):
                 batch = dq[0]
                 retry_backoff = self.config['retry_backoff_ms'] / 1000.0
                 linger = self.config['linger_ms'] / 1000.0
-                backing_off = bool(batch.attempts > 0 and
-                                   batch.last_attempt + retry_backoff > now)
+                backing_off = batch.attempts > 0 and batch.last_attempt + retry_backoff > now
                 waited_time = now - batch.last_attempt
                 time_to_wait = retry_backoff if backing_off else linger
                 time_left = max(time_to_wait - waited_time, 0)
                 full = bool(len(dq) > 1 or batch.records.is_full())
-                expired = bool(waited_time >= time_to_wait)
+                expired = waited_time >= time_to_wait
 
                 sendable = (full or expired or exhausted or self._closed or
                             self._flush_in_progress())
@@ -467,31 +475,31 @@ class RecordAccumulator(object):
                 tp = partitions[self._drain_index]
                 if tp in self._batches and tp not in self.muted:
                     with self._tp_locks[tp]:
-                        dq = self._batches[tp]
-                        if dq:
+                        if dq := self._batches[tp]:
                             first = dq[0]
                             backoff = (
-                                bool(first.attempts > 0) and
-                                bool(first.last_attempt +
-                                     self.config['retry_backoff_ms'] / 1000.0
-                                     > now)
+                                first.attempts > 0
+                                and first.last_attempt
+                                + self.config['retry_backoff_ms'] / 1000.0
+                                > now
                             )
-                            # Only drain the batch if it is not during backoff
+
                             if not backoff:
-                                if (size + first.records.size_in_bytes() > max_size
-                                    and len(ready) > 0):
+                                if (
+                                    size + first.records.size_in_bytes() > max_size
+                                    and ready
+                                ):
                                     # there is a rare case that a single batch
                                     # size is larger than the request size due
                                     # to compression; in this case we will
                                     # still eventually send this batch in a
                                     # single request
                                     break
-                                else:
-                                    batch = dq.popleft()
-                                    batch.records.close()
-                                    size += batch.records.size_in_bytes()
-                                    ready.append(batch)
-                                    batch.drained = now
+                                batch = dq.popleft()
+                                batch.records.close()
+                                size += batch.records.size_in_bytes()
+                                ready.append(batch)
+                                batch.drained = now
 
                 self._drain_index += 1
                 self._drain_index %= len(partitions)

@@ -7,11 +7,11 @@ class AbstractType(object):
     __metaclass__ = abc.ABCMeta
 
     @abc.abstractmethod
-    def encode(cls, value): # pylint: disable=no-self-argument
+    def encode(self, value): # pylint: disable=no-self-argument
         pass
 
     @abc.abstractmethod
-    def decode(cls, data): # pylint: disable=no-self-argument
+    def decode(self, data): # pylint: disable=no-self-argument
         pass
 
     @classmethod

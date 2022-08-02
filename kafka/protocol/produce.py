@@ -126,9 +126,7 @@ class ProduceRequest(Request):
     API_KEY = 0
 
     def expect_response(self):
-        if self.required_acks == 0: # pylint: disable=no-member
-            return False
-        return True
+        return self.required_acks != 0
 
 
 class ProduceRequest_v0(ProduceRequest):

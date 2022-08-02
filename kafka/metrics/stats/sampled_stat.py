@@ -77,11 +77,11 @@ class AbstractSampledStat(AbstractMeasurableStat):
         if self._current >= len(self._samples):
             sample = self.new_sample(time_ms)
             self._samples.append(sample)
-            return sample
         else:
             sample = self.current(time_ms)
             sample.reset(time_ms)
-            return sample
+
+        return sample
 
     class Sample(object):
 

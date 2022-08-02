@@ -144,11 +144,7 @@ class Fetcher(six.Iterator):
                 self._reset_offset(tp)
 
     def _clean_done_fetch_futures(self):
-        while True:
-            if not self._fetch_futures:
-                break
-            if not self._fetch_futures[0].is_done:
-                break
+        while self._fetch_futures and self._fetch_futures[0].is_done:
             self._fetch_futures.popleft()
 
     def in_flight_fetches(self):
@@ -244,7 +240,9 @@ class Fetcher(six.Iterator):
             if self._subscriptions.is_assigned(partition):
                 self._subscriptions.seek(partition, offset)
         else:
-            log.debug("Could not find offset for partition %s since it is probably deleted" % (partition,))
+            log.debug(
+                f"Could not find offset for partition {partition} since it is probably deleted"
+            )
 
     def _retrieve_offsets(self, timestamps, timeout_ms=float("inf")):
         """Fetch offset for each partition passed in ``timestamps`` map.
@@ -296,7 +294,7 @@ class Fetcher(six.Iterator):
                     log.debug("Stale metadata was raised, and we now have an updated metadata. Rechecking partition existence")
                     unknown_partition = future.exception.args[0]  # TopicPartition from StaleMetadata
                     if self._client.cluster.leader_for_partition(unknown_partition) is None:
-                        log.debug("Removed partition %s from offsets retrieval" % (unknown_partition, ))
+                        log.debug(f"Removed partition {unknown_partition} from offsets retrieval")
                         timestamps.pop(unknown_partition)
             else:
                 time.sleep(self.config['retry_backoff_ms'] / 1000.0)
@@ -305,7 +303,8 @@ class Fetcher(six.Iterator):
             remaining_ms = timeout_ms - elapsed_ms
 
         raise Errors.KafkaTimeoutError(
-            "Failed to get offsets by timestamps in %s ms" % (timeout_ms,))
+            f"Failed to get offsets by timestamps in {timeout_ms} ms"
+        )
 
     def fetched_records(self, max_records=None, update_offsets=True):
         """Returns previously fetched records and updates consumed offsets.
@@ -604,10 +603,7 @@ class Fetcher(six.Iterator):
                     if response.API_VERSION == 0:
                         offsets = partition_info[2]
                         assert len(offsets) <= 1, 'Expected OffsetResponse with one offset'
-                        if not offsets:
-                            offset = UNKNOWN_OFFSET
-                        else:
-                            offset = offsets[0]
+                        offset = offsets[0] if offsets else UNKNOWN_OFFSET
                         log.debug("Handling v0 ListOffsetResponse response for %s. "
                                   "Fetched offset %s", partition, offset)
                         if offset != UNKNOWN_OFFSET:
@@ -755,9 +751,12 @@ class Fetcher(six.Iterator):
                 partition, offset = partition_data[:2]
                 fetch_offsets[TopicPartition(topic, partition)] = offset
 
-        partitions = set([TopicPartition(topic, partition_data[0])
-                          for topic, partitions in response.topics
-                          for partition_data in partitions])
+        partitions = {
+            TopicPartition(topic, partition_data[0])
+            for topic, partitions in response.topics
+            for partition_data in partitions
+        }
+
         metric_aggregator = FetchResponseMetricAggregator(self._sensors, partitions)
 
         # randomized ordering should improve balance for short-lived consumers
@@ -942,7 +941,7 @@ class FetchResponseMetricAggregator(object):
 class FetchManagerMetrics(object):
     def __init__(self, metrics, prefix):
         self.metrics = metrics
-        self.group_name = '%s-fetch-manager-metrics' % (prefix,)
+        self.group_name = f'{prefix}-fetch-manager-metrics'
 
         self.bytes_fetched = metrics.sensor('bytes-fetched')
         self.bytes_fetched.add(metrics.metric_name('fetch-size-avg', self.group_name,
@@ -984,18 +983,36 @@ class FetchManagerMetrics(object):
             metric_tags = {'topic': topic.replace('.', '_')}
 
             bytes_fetched = self.metrics.sensor(name)
-            bytes_fetched.add(self.metrics.metric_name('fetch-size-avg',
+            bytes_fetched.add(
+                self.metrics.metric_name(
+                    'fetch-size-avg',
                     self.group_name,
-                    'The average number of bytes fetched per request for topic %s' % (topic,),
-                    metric_tags), Avg())
-            bytes_fetched.add(self.metrics.metric_name('fetch-size-max',
+                    f'The average number of bytes fetched per request for topic {topic}',
+                    metric_tags,
+                ),
+                Avg(),
+            )
+
+            bytes_fetched.add(
+                self.metrics.metric_name(
+                    'fetch-size-max',
                     self.group_name,
-                    'The maximum number of bytes fetched per request for topic %s' % (topic,),
-                    metric_tags), Max())
-            bytes_fetched.add(self.metrics.metric_name('bytes-consumed-rate',
+                    f'The maximum number of bytes fetched per request for topic {topic}',
+                    metric_tags,
+                ),
+                Max(),
+            )
+
+            bytes_fetched.add(
+                self.metrics.metric_name(
+                    'bytes-consumed-rate',
                     self.group_name,
-                    'The average number of bytes consumed per second for topic %s' % (topic,),
-                    metric_tags), Rate())
+                    f'The average number of bytes consumed per second for topic {topic}',
+                    metric_tags,
+                ),
+                Rate(),
+            )
+
         bytes_fetched.record(num_bytes)
 
         # record records fetched
@@ -1005,12 +1022,24 @@ class FetchManagerMetrics(object):
             metric_tags = {'topic': topic.replace('.', '_')}
 
             records_fetched = self.metrics.sensor(name)
-            records_fetched.add(self.metrics.metric_name('records-per-request-avg',
+            records_fetched.add(
+                self.metrics.metric_name(
+                    'records-per-request-avg',
                     self.group_name,
-                    'The average number of records in each request for topic %s' % (topic,),
-                    metric_tags), Avg())
-            records_fetched.add(self.metrics.metric_name('records-consumed-rate',
+                    f'The average number of records in each request for topic {topic}',
+                    metric_tags,
+                ),
+                Avg(),
+            )
+
+            records_fetched.add(
+                self.metrics.metric_name(
+                    'records-consumed-rate',
                     self.group_name,
-                    'The average number of records consumed per second for topic %s' % (topic,),
-                    metric_tags), Rate())
+                    f'The average number of records consumed per second for topic {topic}',
+                    metric_tags,
+                ),
+                Rate(),
+            )
+
         records_fetched.record(num_records)

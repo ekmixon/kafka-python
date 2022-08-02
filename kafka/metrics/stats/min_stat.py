@@ -14,6 +14,8 @@ class Min(AbstractSampledStat):
         sample.value = min(sample.value, value)
 
     def combine(self, samples, config, now):
-        if not samples:
-            return float(sys.maxsize)
-        return float(min(sample.value for sample in samples))
+        return (
+            float(min(sample.value for sample in samples))
+            if samples
+            else float(sys.maxsize)
+        )

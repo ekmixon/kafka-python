@@ -89,4 +89,4 @@ def test_same_acls_are_same():
 
     assert one == two
     assert hash(one) == hash(two)
-    assert len(set((one, two))) == 1
+    assert len({one, two}) == 1

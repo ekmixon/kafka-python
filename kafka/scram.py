@@ -38,18 +38,18 @@ class ScramClient:
         self.server_signature = None
 
     def first_message(self):
-        client_first_bare = 'n={},r={}'.format(self.user, self.nonce)
+        client_first_bare = f'n={self.user},r={self.nonce}'
         self.auth_message += client_first_bare
-        return 'n,,' + client_first_bare
+        return f'n,,{client_first_bare}'
 
     def process_server_first_message(self, server_first_message):
-        self.auth_message += ',' + server_first_message
+        self.auth_message += f',{server_first_message}'
         params = dict(pair.split('=', 1) for pair in server_first_message.split(','))
         server_nonce = params['r']
         if not server_nonce.startswith(self.nonce):
             raise ValueError("Server nonce, did not start with client nonce!")
         self.nonce = server_nonce
-        self.auth_message += ',c=biws,r=' + self.nonce
+        self.auth_message += f',c=biws,r={self.nonce}'
 
         salt = base64.b64decode(params['s'].encode('utf-8'))
         iterations = int(params['i'])
@@ -71,7 +71,7 @@ class ScramClient:
         )
 
     def final_message(self):
-        return 'c=biws,r={},p={}'.format(self.nonce, base64.b64encode(self.client_proof).decode('utf-8'))
+        return f"c=biws,r={self.nonce},p={base64.b64encode(self.client_proof).decode('utf-8')}"
 
     def process_server_final_message(self, server_final_message):
         params = dict(pair.split('=', 1) for pair in server_final_message.split(','))

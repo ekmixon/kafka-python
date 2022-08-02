@@ -49,22 +49,20 @@ def test_end_to_end(kafka_broker, compression):
     topic = random_string(5)
 
     messages = 100
-    futures = []
-    for i in range(messages):
-        futures.append(producer.send(topic, 'msg %d' % i))
+    futures = [producer.send(topic, 'msg %d' % i) for i in range(messages)]
     ret = [f.get(timeout=30) for f in futures]
     assert len(ret) == messages
     producer.close()
 
     consumer.subscribe([topic])
     msgs = set()
-    for i in range(messages):
+    for _ in range(messages):
         try:
             msgs.add(next(consumer).value)
         except StopIteration:
             break
 
-    assert msgs == set(['msg %d' % (i,) for i in range(messages)])
+    assert msgs == {'msg %d' % (i,) for i in range(messages)}
     consumer.close()
 
 

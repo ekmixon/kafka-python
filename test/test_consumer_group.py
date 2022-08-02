@@ -15,7 +15,7 @@ from test.testutil import env_kafka_version, random_string
 
 
 def get_connect_str(kafka_broker):
-    return kafka_broker.host + ':' + str(kafka_broker.port)
+    return f'{kafka_broker.host}:{str(kafka_broker.port)}'
 
 
 @pytest.mark.skipif(not env_kafka_version(), reason="No KAFKA_VERSION set")
@@ -48,7 +48,7 @@ def test_group(kafka_broker, topic):
     stop = {}
     threads = {}
     messages = collections.defaultdict(list)
-    group_id = 'test-group-' + random_string(6)
+    group_id = f'test-group-{random_string(6)}'
     def consumer_thread(i):
         assert i not in consumers
         assert i not in stop
@@ -83,19 +83,24 @@ def test_group(kafka_broker, topic):
                 elif not consumers[c].assignment():
                     break
 
-            # If all consumers exist and have an assignment
             else:
 
                 logging.info('All consumers have assignment... checking for stable group')
                 # Verify all consumers are in the same generation
                 # then log state and break while loop
-                generations = set([consumer._coordinator._generation.generation_id
-                                   for consumer in list(consumers.values())])
+                generations = {
+                    consumer._coordinator._generation.generation_id
+                    for consumer in list(consumers.values())
+                }
+
 
                 # New generation assignment is not complete until
                 # coordinator.rejoining = False
-                rejoining = any([consumer._coordinator.rejoining
-                                 for consumer in list(consumers.values())])
+                rejoining = any(
+                    consumer._coordinator.rejoining
+                    for consumer in list(consumers.values())
+                )
+
 
                 if not rejoining and len(generations) == 1:
                     for c, consumer in list(consumers.items()):
@@ -116,9 +121,11 @@ def test_group(kafka_broker, topic):
             assert set.isdisjoint(consumers[c].assignment(), group_assignment)
             group_assignment.update(consumers[c].assignment())
 
-        assert group_assignment == set([
+        assert group_assignment == {
             TopicPartition(topic, partition)
-            for partition in range(num_partitions)])
+            for partition in range(num_partitions)
+        }
+
         logging.info('Assignment looks good!')
 
     finally:
@@ -139,7 +146,7 @@ def test_paused(kafka_broker, topic):
     assert set() == consumer.paused()
 
     consumer.pause(topics[0])
-    assert set([topics[0]]) == consumer.paused()
+    assert {topics[0]} == consumer.paused()
 
     consumer.resume(topics[0])
     assert set() == consumer.paused()
@@ -151,7 +158,7 @@ def test_paused(kafka_broker, topic):
 
 @pytest.mark.skipif(env_kafka_version() < (0, 9), reason='Unsupported Kafka Version')
 def test_heartbeat_thread(kafka_broker, topic):
-    group_id = 'test-group-' + random_string(6)
+    group_id = f'test-group-{random_string(6)}'
     consumer = KafkaConsumer(topic,
                              bootstrap_servers=get_connect_str(kafka_broker),
                              group_id=group_id,

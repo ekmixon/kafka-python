@@ -49,8 +49,9 @@ class RangePartitionAssignor(AbstractPartitionAssignor):
             partitions = sorted(partitions)
             consumers_for_topic.sort()
 
-            partitions_per_consumer = len(partitions) // len(consumers_for_topic)
-            consumers_with_extra = len(partitions) % len(consumers_for_topic)
+            partitions_per_consumer, consumers_with_extra = divmod(
+                len(partitions), len(consumers_for_topic)
+            )
 
             for i, member in enumerate(consumers_for_topic):
                 start = partitions_per_consumer * i
@@ -60,13 +61,12 @@ class RangePartitionAssignor(AbstractPartitionAssignor):
                     length += 1
                 assignment[member][topic] = partitions[start:start+length]
 
-        protocol_assignment = {}
-        for member_id in member_metadata:
-            protocol_assignment[member_id] = ConsumerProtocolMemberAssignment(
-                cls.version,
-                sorted(assignment[member_id].items()),
-                b'')
-        return protocol_assignment
+        return {
+            member_id: ConsumerProtocolMemberAssignment(
+                cls.version, sorted(assignment[member_id].items()), b''
+            )
+            for member_id in member_metadata
+        }
 
     @classmethod
     def metadata(cls, topics):

@@ -12,7 +12,7 @@ def special_to_underscore(string, _matcher=re.compile(r'[^a-zA-Z0-9_]+')):
 
 
 def random_string(length):
-    return "".join(random.choice(string.ascii_letters) for i in range(length))
+    return "".join(random.choice(string.ascii_letters) for _ in range(length))
 
 
 def env_kafka_version():

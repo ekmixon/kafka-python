@@ -73,7 +73,7 @@ class ClusterMetadata(object):
 
         brokers = {}
         for i, (host, port, _) in enumerate(bootstrap_hosts):
-            node_id = 'bootstrap-%s' % i
+            node_id = f'bootstrap-{i}'
             brokers[node_id] = BrokerMetadata(node_id, host, port, None)
         return brokers
 
@@ -128,9 +128,11 @@ class ClusterMetadata(object):
         """
         if topic not in self._partitions:
             return None
-        return set([partition for partition, metadata
-                              in six.iteritems(self._partitions[topic])
-                              if metadata.leader != -1])
+        return {
+            partition
+            for partition, metadata in six.iteritems(self._partitions[topic])
+            if metadata.leader != -1
+        }
 
     def leader_for_partition(self, partition):
         """Return node_id of leader, -1 unavailable, None if unknown."""
@@ -210,10 +212,7 @@ class ClusterMetadata(object):
             set: {topic (str), ...}
         """
         topics = set(self._partitions.keys())
-        if exclude_internal_topics:
-            return topics - self.internal_topics
-        else:
-            return topics
+        return topics - self.internal_topics if exclude_internal_topics else topics
 
     def failed_update(self, exception):
         """Update cluster state given a failed MetadataRequest."""
@@ -252,9 +251,7 @@ class ClusterMetadata(object):
                 rack = None
             else:
                 node_id, host, port, rack = broker
-            _new_brokers.update({
-                node_id: BrokerMetadata(node_id, host, port, rack)
-            })
+            _new_brokers[node_id] = BrokerMetadata(node_id, host, port, rack)
 
         if metadata.API_VERSION == 0:
             _new_controller = None
@@ -310,9 +307,7 @@ class ClusterMetadata(object):
             self._broker_partitions = _new_broker_partitions
             self.unauthorized_topics = _new_unauthorized_topics
             self.internal_topics = _new_internal_topics
-            f = None
-            if self._future:
-                f = self._future
+            f = self._future or None
             self._future = None
             self._need_update = False
 
@@ -361,7 +356,7 @@ class ClusterMetadata(object):
 
         # Use a coordinator-specific node id so that group requests
         # get a dedicated connection
-        node_id = 'coordinator-{}'.format(response.coordinator_id)
+        node_id = f'coordinator-{response.coordinator_id}'
         coordinator = BrokerMetadata(
             node_id,
             response.host,

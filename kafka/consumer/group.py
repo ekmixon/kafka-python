@@ -312,10 +312,8 @@ class KafkaConsumer(six.Iterator):
     DEFAULT_SESSION_TIMEOUT_MS_0_9 = 30000
 
     def __init__(self, *topics, **configs):
-        # Only check for extra config keys in top-level class
-        extra_configs = set(configs).difference(self.DEFAULT_CONFIG)
-        if extra_configs:
-            raise KafkaConfigurationError("Unrecognized configs: %s" % (extra_configs,))
+        if extra_configs := set(configs).difference(self.DEFAULT_CONFIG):
+            raise KafkaConfigurationError(f"Unrecognized configs: {extra_configs}")
 
         self.config = copy.copy(self.DEFAULT_CONFIG)
         self.config.update(configs)
@@ -332,10 +330,9 @@ class KafkaConsumer(six.Iterator):
         fetch_max_wait_ms = self.config['fetch_max_wait_ms']
         if not (fetch_max_wait_ms < request_timeout_ms < connections_max_idle_ms):
             raise KafkaConfigurationError(
-                "connections_max_idle_ms ({}) must be larger than "
-                "request_timeout_ms ({}) which must be larger than "
-                "fetch_max_wait_ms ({})."
-                .format(connections_max_idle_ms, request_timeout_ms, fetch_max_wait_ms))
+                f"connections_max_idle_ms ({connections_max_idle_ms}) must be larger than request_timeout_ms ({request_timeout_ms}) which must be larger than fetch_max_wait_ms ({fetch_max_wait_ms})."
+            )
+
 
         metrics_tags = {'client-id': self.config['client_id']}
         metric_config = MetricConfig(samples=self.config['metrics_num_samples'],
@@ -367,18 +364,22 @@ class KafkaConsumer(six.Iterator):
         # use it for both. Otherwise use the old default of 30secs
         if self.config['api_version'] < (0, 10, 1):
             if 'session_timeout_ms' not in configs:
-                if 'max_poll_interval_ms' in configs:
-                    self.config['session_timeout_ms'] = configs['max_poll_interval_ms']
-                else:
-                    self.config['session_timeout_ms'] = self.DEFAULT_SESSION_TIMEOUT_MS_0_9
+                self.config['session_timeout_ms'] = configs.get(
+                    'max_poll_interval_ms', self.DEFAULT_SESSION_TIMEOUT_MS_0_9
+                )
+
             if 'max_poll_interval_ms' not in configs:
                 self.config['max_poll_interval_ms'] = self.config['session_timeout_ms']
 
-        if self.config['group_id'] is not None:
-            if self.config['request_timeout_ms'] <= self.config['session_timeout_ms']:
-                raise KafkaConfigurationError(
-                    "Request timeout (%s) must be larger than session timeout (%s)" %
-                    (self.config['request_timeout_ms'], self.config['session_timeout_ms']))
+        if (
+            self.config['group_id'] is not None
+            and self.config['request_timeout_ms']
+            <= self.config['session_timeout_ms']
+        ):
+            raise KafkaConfigurationError(
+                f"Request timeout ({self.config['request_timeout_ms']}) must be larger than session timeout ({self.config['session_timeout_ms']})"
+            )
+
 
         self._subscription = SubscriptionState(self.config['auto_offset_reset'])
         self._fetcher = Fetcher(
@@ -498,9 +499,7 @@ class KafkaConsumer(six.Iterator):
         if offsets is None:
             offsets = self._subscription.all_consumed_offsets()
         log.debug("Committing offsets: %s", offsets)
-        future = self._coordinator.commit_offsets_async(
-            offsets, callback=callback)
-        return future
+        return self._coordinator.commit_offsets_async(offsets, callback=callback)
 
     def commit(self, offsets=None):
         """Commit offsets to kafka, blocking until success or error.
@@ -557,16 +556,9 @@ class KafkaConsumer(six.Iterator):
                 committed = self._subscription.assignment[partition].committed
         else:
             commit_map = self._coordinator.fetch_committed_offsets([partition])
-            if partition in commit_map:
-                committed = commit_map[partition]
-            else:
-                committed = None
-
+            committed = commit_map[partition] if partition in commit_map else None
         if committed is not None:
-            if metadata:
-                return committed
-            else:
-                return committed.offset
+            return committed if metadata else committed.offset
 
     def _fetch_all_topic_metadata(self):
         """A blocking call that fetches topic metadata for all topics in the
@@ -654,8 +646,9 @@ class KafkaConsumer(six.Iterator):
         start = time.time()
         remaining = timeout_ms
         while not self._closed:
-            records = self._poll_once(remaining, max_records, update_offsets=update_offsets)
-            if records:
+            if records := self._poll_once(
+                remaining, max_records, update_offsets=update_offsets
+            ):
                 return records
 
             elapsed_ms = (time.time() - start) * 1000
@@ -767,7 +760,7 @@ class KafkaConsumer(six.Iterator):
         Arguments:
             *partitions (TopicPartition): Partitions to pause.
         """
-        if not all([isinstance(p, TopicPartition) for p in partitions]):
+        if not all(isinstance(p, TopicPartition) for p in partitions):
             raise TypeError('partitions must be TopicPartition namedtuples')
         for partition in partitions:
             log.debug("Pausing partition %s", partition)
@@ -791,7 +784,7 @@ class KafkaConsumer(six.Iterator):
         Arguments:
             *partitions (TopicPartition): Partitions to resume.
         """
-        if not all([isinstance(p, TopicPartition) for p in partitions]):
+        if not all(isinstance(p, TopicPartition) for p in partitions):
             raise TypeError('partitions must be TopicPartition namedtuples')
         for partition in partitions:
             log.debug("Resuming partition %s", partition)
@@ -836,7 +829,7 @@ class KafkaConsumer(six.Iterator):
             AssertionError: If any partition is not currently assigned, or if
                 no partitions are assigned.
         """
-        if not all([isinstance(p, TopicPartition) for p in partitions]):
+        if not all(isinstance(p, TopicPartition) for p in partitions):
             raise TypeError('partitions must be TopicPartition namedtuples')
         if not partitions:
             partitions = self._subscription.assigned_partitions()
@@ -862,7 +855,7 @@ class KafkaConsumer(six.Iterator):
             AssertionError: If any partition is not currently assigned, or if
                 no partitions are assigned.
         """
-        if not all([isinstance(p, TopicPartition) for p in partitions]):
+        if not all(isinstance(p, TopicPartition) for p in partitions):
             raise TypeError('partitions must be TopicPartition namedtuples')
         if not partitions:
             partitions = self._subscription.assigned_partitions()
@@ -1011,14 +1004,16 @@ class KafkaConsumer(six.Iterator):
         """
         if self.config['api_version'] <= (0, 10, 0):
             raise UnsupportedVersionError(
-                "offsets_for_times API not supported for cluster version {}"
-                .format(self.config['api_version']))
+                f"offsets_for_times API not supported for cluster version {self.config['api_version']}"
+            )
+
         for tp, ts in six.iteritems(timestamps):
             timestamps[tp] = int(ts)
             if ts < 0:
                 raise ValueError(
-                    "The target time for partition {} is {}. The target time "
-                    "cannot be negative.".format(tp, ts))
+                    f"The target time for partition {tp} is {ts}. The target time cannot be negative."
+                )
+
         return self._fetcher.get_offsets_by_times(
             timestamps, self.config['request_timeout_ms'])
 
@@ -1044,9 +1039,9 @@ class KafkaConsumer(six.Iterator):
                 up the offsets by timestamp.
             KafkaTimeoutError: If fetch failed in request_timeout_ms.
         """
-        offsets = self._fetcher.beginning_offsets(
-            partitions, self.config['request_timeout_ms'])
-        return offsets
+        return self._fetcher.beginning_offsets(
+            partitions, self.config['request_timeout_ms']
+        )
 
     def end_offsets(self, partitions):
         """Get the last offset for the given partitions. The last offset of a
@@ -1071,9 +1066,9 @@ class KafkaConsumer(six.Iterator):
                 up the offsets by timestamp.
             KafkaTimeoutError: If fetch failed in request_timeout_ms
         """
-        offsets = self._fetcher.end_offsets(
-            partitions, self.config['request_timeout_ms'])
-        return offsets
+        return self._fetcher.end_offsets(
+            partitions, self.config['request_timeout_ms']
+        )
 
     def _use_consumer_group(self):
         """Return True iff this consumer can/should join a broker-coordinated group."""
@@ -1177,10 +1172,11 @@ class KafkaConsumer(six.Iterator):
                 self._fetcher.send_fetches()
 
     def _next_timeout(self):
-        timeout = min(self._consumer_timeout,
-                      self._client.cluster.ttl() / 1000.0 + time.time(),
-                      self._coordinator.time_to_next_poll() + time.time())
-        return timeout
+        return min(
+            self._consumer_timeout,
+            self._client.cluster.ttl() / 1000.0 + time.time(),
+            self._coordinator.time_to_next_poll() + time.time(),
+        )
 
     def __iter__(self):  # pylint: disable=non-iterator-returned
         return self
@@ -1191,10 +1187,7 @@ class KafkaConsumer(six.Iterator):
         # Now that the heartbeat thread runs in the background
         # there should be no reason to maintain a separate iterator
         # but we'll keep it available for a few releases just in case
-        if self.config['legacy_iterator']:
-            return self.next_v1()
-        else:
-            return self.next_v2()
+        return self.next_v1() if self.config['legacy_iterator'] else self.next_v2()
 
     def next_v2(self):
         self._set_consumer_timeout()

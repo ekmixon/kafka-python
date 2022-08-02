@@ -99,7 +99,7 @@ class Metrics(object):
                 the metric
         """
         combined_tags = dict(self.config.tags)
-        combined_tags.update(tags or {})
+        combined_tags |= (tags or {})
         return MetricName(name, group, description, combined_tags)
 
     def get_sensor(self, name):
@@ -136,8 +136,7 @@ class Metrics(object):
         Returns:
             Sensor: The sensor that is created
         """
-        sensor = self.get_sensor(name)
-        if sensor:
+        if sensor := self.get_sensor(name):
             return sensor
 
         with self._lock:
@@ -163,8 +162,7 @@ class Metrics(object):
         Arguments:
             name (str): The name of the sensor to be removed
         """
-        sensor = self._sensors.get(name)
-        if sensor:
+        if sensor := self._sensors.get(name):
             child_sensors = None
             with sensor._lock:
                 with self._lock:

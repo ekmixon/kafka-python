@@ -193,11 +193,7 @@ class ResourcePatternFilter(object):
             raise IllegalArgumentError("pattern_type must be an ACLResourcePatternType object")
 
     def __repr__(self):
-        return "<ResourcePattern type={}, name={}, pattern={}>".format(
-            self.resource_type.name,
-            self.resource_name,
-            self.pattern_type.name
-        )
+        return f"<ResourcePattern type={self.resource_type.name}, name={self.resource_name}, pattern={self.pattern_type.name}>"
 
     def __eq__(self, other):
         return all((
@@ -240,5 +236,5 @@ class ResourcePattern(ResourcePatternFilter):
             raise IllegalArgumentError("resource_type cannot be ANY")
         if self.pattern_type in [ACLResourcePatternType.ANY, ACLResourcePatternType.MATCH]:
             raise IllegalArgumentError(
-                "pattern_type cannot be {} on a concrete ResourcePattern".format(self.pattern_type.name)
+                f"pattern_type cannot be {self.pattern_type.name} on a concrete ResourcePattern"
             )

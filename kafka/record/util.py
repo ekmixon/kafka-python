@@ -80,9 +80,7 @@ def size_of_varint(value):
         return 7
     if value <= 0xffffffffffffff:
         return 8
-    if value <= 0x7fffffffffffffff:
-        return 9
-    return 10
+    return 9 if value <= 0x7fffffffffffffff else 10
 
 
 def decode_varint(buffer, pos=0):
@@ -131,5 +129,4 @@ def calc_crc32c(memview, _crc32c=_crc32c):
 def calc_crc32(memview):
     """ Calculate simple CRC-32 checksum over a memoryview of data
     """
-    crc = binascii.crc32(memview) & 0xffffffff
-    return crc
+    return binascii.crc32(memview) & 0xffffffff

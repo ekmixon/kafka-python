@@ -53,9 +53,12 @@ class WeakMethod(object):
         return hash(self.target) ^ hash(self.method)
 
     def __eq__(self, other):
-        if not isinstance(other, WeakMethod):
-            return False
-        return self._target_id == other._target_id and self._method_id == other._method_id
+        return (
+            self._target_id == other._target_id
+            and self._method_id == other._method_id
+            if isinstance(other, WeakMethod)
+            else False
+        )
 
 
 class Dict(dict):

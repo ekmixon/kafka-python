@@ -8,8 +8,7 @@ class KafkaBytes(bytearray):
             nbytes = len(self) - self._idx
         start = self._idx
         self._idx += nbytes
-        if self._idx > len(self):
-            self._idx = len(self)
+        self._idx = min(self._idx, len(self))
         return bytes(self[start:self._idx])
 
     def write(self, data):

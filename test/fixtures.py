@@ -84,9 +84,9 @@ class Fixture(object):
         if not output_dir:
             output_dir = os.path.join(cls.project_root, 'servers', 'dist')
 
-        distfile = 'kafka_%s-%s' % (scala_version, kafka_version,)
-        url_base = 'https://archive.apache.org/dist/kafka/%s/' % (kafka_version,)
-        output_file = os.path.join(output_dir, distfile + '.tgz')
+        distfile = f'kafka_{scala_version}-{kafka_version}'
+        url_base = f'https://archive.apache.org/dist/kafka/{kafka_version}/'
+        output_file = os.path.join(output_dir, f'{distfile}.tgz')
 
         if os.path.isfile(output_file):
             log.info("Found file already on disk: %s", output_file)
@@ -121,8 +121,10 @@ class Fixture(object):
 
     def kafka_run_class_env(self):
         env = os.environ.copy()
-        env['KAFKA_LOG4J_OPTS'] = "-Dlog4j.configuration=file:%s" % \
-                                  (self.test_resource("log4j.properties"),)
+        env[
+            'KAFKA_LOG4J_OPTS'
+        ] = f'-Dlog4j.configuration=file:{self.test_resource("log4j.properties")}'
+
         return env
 
     @classmethod
@@ -130,7 +132,7 @@ class Fixture(object):
         log.info('Rendering %s from template %s', target_file.strpath, source_file)
         with open(source_file, "r") as handle:
             template = handle.read()
-            assert len(template) > 0, 'Empty template %s' % (source_file,)
+            assert len(template) > 0, f'Empty template {source_file}'
         with open(target_file.strpath, "w") as handle:
             handle.write(template.format(**binding))
             handle.flush()
@@ -143,11 +145,11 @@ class Fixture(object):
         os.close(dirfd)
         log.debug("Template string:")
         for line in template.splitlines():
-            log.debug('  ' + line.strip())
+            log.debug(f'  {line.strip()}')
         log.debug("Rendered template:")
         with open(target_file.strpath, 'r') as o:
             for line in o:
-                log.debug('  ' + line.strip())
+                log.debug(f'  {line.strip()}')
         log.debug("binding:")
         for key, value in binding.items():
             log.debug("  {key}={value}".format(key=key, value=value))
@@ -296,7 +298,7 @@ class KafkaFixture(Fixture):
         # The logging format changed slightly in 1.0.0
         self.start_pattern = r"\[Kafka ?Server (id=)?%d\],? started" % (broker_id,)
         # Need to wait until the broker has fetched user configs from zookeeper in case we use scram as sasl mechanism
-        self.scram_pattern = r"Removing Produce quota for user %s" % (self.broker_user)
+        self.scram_pattern = f"Removing Produce quota for user {self.broker_user}"
 
         self.zookeeper = zookeeper
         self.zk_chroot = zk_chroot
@@ -339,23 +341,28 @@ class KafkaFixture(Fixture):
                 '  username="{user}" password="{password}";\n'
             )
         else:
-            raise ValueError("SASL mechanism {} currently not supported".format(self.sasl_mechanism))
+            raise ValueError(
+                f"SASL mechanism {self.sasl_mechanism} currently not supported"
+            )
+
         return jaas_config.format(user=self.broker_user, password=self.broker_password)
 
     def _add_scram_user(self):
-        self.out("Adding SCRAM credentials for user {} to zookeeper.".format(self.broker_user))
+        self.out(f"Adding SCRAM credentials for user {self.broker_user} to zookeeper.")
         args = self.kafka_run_class_args(
             "kafka.admin.ConfigCommand",
             "--zookeeper",
-            "%s:%d/%s" % (self.zookeeper.host,
-                       self.zookeeper.port,
-                       self.zk_chroot),
+            "%s:%d/%s"
+            % (self.zookeeper.host, self.zookeeper.port, self.zk_chroot),
             "--alter",
-            "--entity-type", "users",
-            "--entity-name", self.broker_user,
+            "--entity-type",
+            "users",
+            "--entity-name",
+            self.broker_user,
             "--add-config",
-            "{}=[password={}]".format(self.sasl_mechanism, self.broker_password),
+            f"{self.sasl_mechanism}=[password={self.broker_password}]",
         )
+
         env = self.kafka_run_class_env()
         proc = subprocess.Popen(args, env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
@@ -385,13 +392,15 @@ class KafkaFixture(Fixture):
 
     def _create_zk_chroot(self):
         self.out("Creating Zookeeper chroot node...")
-        args = self.kafka_run_class_args("org.apache.zookeeper.ZooKeeperMain",
-                                         "-server",
-                                         "%s:%d" % (self.zookeeper.host,
-                                                    self.zookeeper.port),
-                                         "create",
-                                         "/%s" % (self.zk_chroot,),
-                                         "kafka-python")
+        args = self.kafka_run_class_args(
+            "org.apache.zookeeper.ZooKeeperMain",
+            "-server",
+            "%s:%d" % (self.zookeeper.host, self.zookeeper.port),
+            "create",
+            f"/{self.zk_chroot}",
+            "kafka-python",
+        )
+
         env = self.kafka_run_class_env()
         proc = subprocess.Popen(args, env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
@@ -415,7 +424,7 @@ class KafkaFixture(Fixture):
         env = self.kafka_run_class_env()
         if self.sasl_enabled:
             opts = env.get('KAFKA_OPTS', '').strip()
-            opts += ' -Djava.security.auth.login.config={}'.format(jaas_conf.strpath)
+            opts += f' -Djava.security.auth.login.config={jaas_conf.strpath}'
             env['KAFKA_OPTS'] = opts
             self.render_template(jaas_conf_template, jaas_conf, vars(self))
 
@@ -527,6 +536,7 @@ class KafkaFixture(Fixture):
     def _send_request(self, request, timeout=None):
         def _failure(error):
             raise error
+
         retries = 10
         while True:
             node_id = self._client.least_loaded_node()
@@ -549,8 +559,6 @@ class KafkaFixture(Fixture):
                 retries -= 1
                 if retries == 0:
                     raise exc
-                else:
-                    pass # retry
 
     def _create_topic(self, topic_name, num_partitions=None, replication_factor=None, timeout_ms=10000):
         if num_partitions is None:
@@ -585,36 +593,41 @@ class KafkaFixture(Fixture):
                 raise errors.for_code(error_code)
 
     def _create_topic_via_cli(self, topic_name, num_partitions, replication_factor):
-        args = self.kafka_run_class_args('kafka.admin.TopicCommand',
-                                         '--zookeeper', '%s:%s/%s' % (self.zookeeper.host,
-                                                                      self.zookeeper.port,
-                                                                      self.zk_chroot),
-                                         '--create',
-                                         '--topic', topic_name,
-                                         '--partitions', self.partitions \
-                                             if num_partitions is None else num_partitions,
-                                         '--replication-factor', self.replicas \
-                                             if replication_factor is None \
-                                             else replication_factor)
+        args = self.kafka_run_class_args(
+            'kafka.admin.TopicCommand',
+            '--zookeeper',
+            f'{self.zookeeper.host}:{self.zookeeper.port}/{self.zk_chroot}',
+            '--create',
+            '--topic',
+            topic_name,
+            '--partitions',
+            self.partitions if num_partitions is None else num_partitions,
+            '--replication-factor',
+            self.replicas if replication_factor is None else replication_factor,
+        )
+
         if env_kafka_version() >= (0, 10):
             args.append('--if-not-exists')
         env = self.kafka_run_class_env()
         proc = subprocess.Popen(args, env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         stdout, stderr = proc.communicate()
-        if proc.returncode != 0:
-            if 'kafka.common.TopicExistsException' not in stdout:
-                self.out("Failed to create topic %s" % (topic_name,))
-                self.out(stdout)
-                self.out(stderr)
-                raise RuntimeError("Failed to create topic %s" % (topic_name,))
+        if (
+            proc.returncode != 0
+            and 'kafka.common.TopicExistsException' not in stdout
+        ):
+            self.out(f"Failed to create topic {topic_name}")
+            self.out(stdout)
+            self.out(stderr)
+            raise RuntimeError(f"Failed to create topic {topic_name}")
 
     def get_topic_names(self):
-        args = self.kafka_run_class_args('kafka.admin.TopicCommand',
-                                         '--zookeeper', '%s:%s/%s' % (self.zookeeper.host,
-                                                                      self.zookeeper.port,
-                                                                      self.zk_chroot),
-                                         '--list'
-                                         )
+        args = self.kafka_run_class_args(
+            'kafka.admin.TopicCommand',
+            '--zookeeper',
+            f'{self.zookeeper.host}:{self.zookeeper.port}/{self.zk_chroot}',
+            '--list',
+        )
+
         env = self.kafka_run_class_env()
         env.pop('KAFKA_LOG4J_OPTS')
         proc = subprocess.Popen(args, env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
@@ -647,27 +660,23 @@ class KafkaFixture(Fixture):
     def _create_many_clients(cnt, cls, *args, **params):
         client_id = params['client_id']
         for _ in range(cnt):
-            params['client_id'] = '%s_%s' % (client_id, random_string(4))
+            params['client_id'] = f'{client_id}_{random_string(4)}'
             yield cls(*args, **params)
 
     def get_clients(self, cnt=1, **params):
         params = self._enrich_client_params(params, client_id='client')
-        for client in self._create_many_clients(cnt, KafkaClient, **params):
-            yield client
+        yield from self._create_many_clients(cnt, KafkaClient, **params)
 
     def get_admin_clients(self, cnt, **params):
         params = self._enrich_client_params(params, client_id='admin_client')
-        for client in self._create_many_clients(cnt, KafkaAdminClient, **params):
-            yield client
+        yield from self._create_many_clients(cnt, KafkaAdminClient, **params)
 
     def get_consumers(self, cnt, topics, **params):
         params = self._enrich_client_params(
             params, client_id='consumer', heartbeat_interval_ms=500, auto_offset_reset='earliest'
         )
-        for client in self._create_many_clients(cnt, KafkaConsumer, *topics, **params):
-            yield client
+        yield from self._create_many_clients(cnt, KafkaConsumer, *topics, **params)
 
     def get_producers(self, cnt, **params):
         params = self._enrich_client_params(params, client_id='producer')
-        for client in self._create_many_clients(cnt, KafkaProducer, **params):
-            yield client
+        yield from self._create_many_clients(cnt, KafkaProducer, **params)

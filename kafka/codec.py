@@ -71,11 +71,7 @@ def has_zstd():
 def has_lz4():
     if lz4 is not None:
         return True
-    if lz4f is not None:
-        return True
-    if lz4framed is not None:
-        return True
-    return False
+    return True if lz4f is not None else lz4framed is not None
 
 
 def gzip_encode(payload, compresslevel=None):
@@ -141,7 +137,7 @@ def snappy_encode(payload, xerial_compatible=True, xerial_blocksize=32*1024):
 
     out = io.BytesIO()
     for fmt, dat in zip(_XERIAL_V1_FORMAT, _XERIAL_V1_HEADER):
-        out.write(struct.pack('!' + fmt, dat))
+        out.write(struct.pack(f'!{fmt}', dat))
 
     # Chunk through buffers to avoid creating intermediate slice copies
     if PYPY:
@@ -193,7 +189,7 @@ def _detect_xerial_stream(payload):
     """
 
     if len(payload) > 16:
-        header = struct.unpack('!' + _XERIAL_V1_FORMAT, bytes(payload)[:16])
+        header = struct.unpack(f'!{_XERIAL_V1_FORMAT}', bytes(payload)[:16])
         return header == _XERIAL_V1_HEADER
     return False
 
@@ -202,25 +198,24 @@ def snappy_decode(payload):
     if not has_snappy():
         raise NotImplementedError("Snappy codec is not available")
 
-    if _detect_xerial_stream(payload):
-        # TODO ? Should become a fileobj ?
-        out = io.BytesIO()
-        byt = payload[16:]
-        length = len(byt)
-        cursor = 0
-
-        while cursor < length:
-            block_size = struct.unpack_from('!i', byt[cursor:])[0]
-            # Skip the block size
-            cursor += 4
-            end = cursor + block_size
-            out.write(snappy.decompress(byt[cursor:end]))
-            cursor = end
-
-        out.seek(0)
-        return out.read()
-    else:
+    if not _detect_xerial_stream(payload):
         return snappy.decompress(payload)
+    # TODO ? Should become a fileobj ?
+    out = io.BytesIO()
+    byt = payload[16:]
+    length = len(byt)
+    cursor = 0
+
+    while cursor < length:
+        block_size = struct.unpack_from('!i', byt[cursor:])[0]
+        # Skip the block size
+        cursor += 4
+        end = cursor + block_size
+        out.write(snappy.decompress(byt[cursor:end]))
+        cursor = end
+
+    out.seek(0)
+    return out.read()
 
 
 if lz4:
@@ -266,8 +261,7 @@ def lz4_encode_old_kafka(payload):
     if not isinstance(flg, int):
         flg = ord(flg)
 
-    content_size_bit = ((flg >> 3) & 1)
-    if content_size_bit:
+    if content_size_bit := ((flg >> 3) & 1):
         # Old kafka does not accept the content-size field
         # so we need to discard it and reset the header flag
         flg -= 8
@@ -279,23 +273,16 @@ def lz4_encode_old_kafka(payload):
         payload = data[header_size:]
 
     # This is the incorrect hc
-    hc = xxhash.xxh32(data[0:header_size-1]).digest()[-2:-1]  # pylint: disable-msg=no-member
+    hc = xxhash.xxh32(data[:header_size-1]).digest()[-2:-1]
 
-    return b''.join([
-        data[0:header_size-1],
-        hc,
-        payload
-    ])
+    return b''.join([data[:header_size-1], hc, payload])
 
 
 def lz4_decode_old_kafka(payload):
     assert xxhash is not None
     # Kafka's LZ4 code has a bug in its header checksum implementation
     header_size = 7
-    if isinstance(payload[4], int):
-        flg = payload[4]
-    else:
-        flg = ord(payload[4])
+    flg = payload[4] if isinstance(payload[4], int) else ord(payload[4])
     content_size_bit = ((flg >> 3) & 1)
     if content_size_bit:
         header_size += 8
@@ -303,11 +290,7 @@ def lz4_decode_old_kafka(payload):
     # This should be the correct hc
     hc = xxhash.xxh32(payload[4:header_size-1]).digest()[-2:-1]  # pylint: disable-msg=no-member
 
-    munged_payload = b''.join([
-        payload[0:header_size-1],
-        hc,
-        payload[header_size:]
-    ])
+    munged_payload = b''.join([payload[:header_size-1], hc, payload[header_size:]])
     return lz4_decode(munged_payload)
 
 

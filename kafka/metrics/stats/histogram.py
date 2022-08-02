@@ -36,7 +36,7 @@ class Histogram(object):
     def __str__(self):
         values = ['%.10f:%.0f' % (self._bin_scheme.from_bin(i), value) for
                   i, value in enumerate(self._hist[:-1])]
-        values.append('%s:%s' % (float('inf'), self._hist[-1]))
+        values.append(f"{float('inf')}:{self._hist[-1]}")
         return '{%s}' % ','.join(values)
 
     class ConstantBinScheme(object):
@@ -81,9 +81,8 @@ class Histogram(object):
         def from_bin(self, b):
             if b == self._bins - 1:
                 return float('inf')
-            else:
-                unscaled = (b * (b + 1.0)) / 2.0
-                return unscaled * self._scale
+            unscaled = (b * (b + 1.0)) / 2.0
+            return unscaled * self._scale
 
         def to_bin(self, x):
             if x < 0.0:

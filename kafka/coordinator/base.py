@@ -115,11 +115,14 @@ class BaseCoordinator(object):
             if key in configs:
                 self.config[key] = configs[key]
 
-        if self.config['api_version'] < (0, 10, 1):
-            if self.config['max_poll_interval_ms'] != self.config['session_timeout_ms']:
-                raise Errors.KafkaConfigurationError("Broker version %s does not support "
-                                                     "different values for max_poll_interval_ms "
-                                                     "and session_timeout_ms")
+        if (
+            self.config['api_version'] < (0, 10, 1)
+            and self.config['max_poll_interval_ms']
+            != self.config['session_timeout_ms']
+        ):
+            raise Errors.KafkaConfigurationError("Broker version %s does not support "
+                                                 "different values for max_poll_interval_ms "
+                                                 "and session_timeout_ms")
 
         self._client = client
         self.group_id = self.config['group_id']
@@ -258,15 +261,14 @@ class BaseCoordinator(object):
                 self._client.poll(future=future)
 
                 if future.failed():
-                    if future.retriable():
-                        if getattr(future.exception, 'invalid_metadata', False):
-                            log.debug('Requesting metadata for group coordinator request: %s', future.exception)
-                            metadata_update = self._client.cluster.request_update()
-                            self._client.poll(future=metadata_update)
-                        else:
-                            time.sleep(self.config['retry_backoff_ms'] / 1000)
-                    else:
+                    if not future.retriable():
                         raise future.exception  # pylint: disable-msg=raising-bad-type
+                    if getattr(future.exception, 'invalid_metadata', False):
+                        log.debug('Requesting metadata for group coordinator request: %s', future.exception)
+                        metadata_update = self._client.cluster.request_update()
+                        self._client.poll(future=metadata_update)
+                    else:
+                        time.sleep(self.config['retry_backoff_ms'] / 1000)
 
     def _reset_find_coordinator_future(self, result):
         self._find_coordinator_future = None
@@ -722,9 +724,7 @@ class BaseCoordinator(object):
         Returns: the current generation or None if the group is unjoined/rebalancing
         """
         with self._lock:
-            if self.state is not MemberState.STABLE:
-                return None
-            return self._generation
+            return None if self.state is not MemberState.STABLE else self._generation
 
     def reset_generation(self):
         """Reset the generation and memberId because we have fallen out of the group."""
@@ -854,7 +854,7 @@ class GroupCoordinatorMetrics(object):
     def __init__(self, heartbeat, metrics, prefix, tags=None):
         self.heartbeat = heartbeat
         self.metrics = metrics
-        self.metric_group_name = prefix + "-coordinator-metrics"
+        self.metric_group_name = f"{prefix}-coordinator-metrics"
 
         self.heartbeat_latency = metrics.sensor('heartbeat-latency')
         self.heartbeat_latency.add(metrics.metric_name(
@@ -904,7 +904,7 @@ class GroupCoordinatorMetrics(object):
 class HeartbeatThread(threading.Thread):
     def __init__(self, coordinator):
         super(HeartbeatThread, self).__init__()
-        self.name = coordinator.group_id + '-heartbeat'
+        self.name = f'{coordinator.group_id}-heartbeat'
         self.coordinator = coordinator
         self.enabled = False
         self.closed = False

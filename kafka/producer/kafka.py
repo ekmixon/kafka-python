@@ -353,11 +353,13 @@ class KafkaProducer(object):
                 self.config[key] = configs.pop(key)
 
         # Only check for extra config keys in top-level class
-        assert not configs, 'Unrecognized configs: %s' % (configs,)
+        assert not configs, f'Unrecognized configs: {configs}'
 
         if self.config['client_id'] is None:
-            self.config['client_id'] = 'kafka-python-producer-%s' % \
-                                       (PRODUCER_CLIENT_ID_SEQUENCE.increment(),)
+            self.config[
+                'client_id'
+            ] = f'kafka-python-producer-{PRODUCER_CLIENT_ID_SEQUENCE.increment()}'
+
 
         if self.config['acks'] == 'all':
             self.config['acks'] = -1
@@ -398,16 +400,18 @@ class KafkaProducer(object):
         # Check compression_type for library support
         ct = self.config['compression_type']
         if ct not in self._COMPRESSORS:
-            raise ValueError("Not supported codec: {}".format(ct))
-        else:
-            checker, compression_attrs = self._COMPRESSORS[ct]
-            assert checker(), "Libraries for {} compression codec not found".format(ct)
-            self.config['compression_attrs'] = compression_attrs
+            raise ValueError(f"Not supported codec: {ct}")
+        checker, compression_attrs = self._COMPRESSORS[ct]
+        assert checker(), f"Libraries for {ct} compression codec not found"
+        self.config['compression_attrs'] = compression_attrs
 
         message_version = self._max_usable_produce_magic()
         self._accumulator = RecordAccumulator(message_version=message_version, metrics=self._metrics, **self.config)
         self._metadata = client.cluster
-        guarantee_message_order = bool(self.config['max_in_flight_requests_per_connection'] == 1)
+        guarantee_message_order = (
+            self.config['max_in_flight_requests_per_connection'] == 1
+        )
+
         self._sender = Sender(client, self._metadata,
                               self._accumulator, self._metrics,
                               guarantee_message_order=guarantee_message_order,
@@ -484,7 +488,7 @@ class KafkaProducer(object):
             assert timeout >= 0
 
         log.info("Closing the Kafka producer with %s secs timeout.", timeout)
-        invoked_from_callback = bool(threading.current_thread() is self._sender)
+        invoked_from_callback = threading.current_thread() is self._sender
         if timeout > 0:
             if invoked_from_callback:
                 log.warning("Overriding close timeout %s secs to 0 in order to"
@@ -492,11 +496,9 @@ class KafkaProducer(object):
                             " means you have incorrectly invoked close with a"
                             " non-zero timeout from the producer call-back.",
                             timeout)
-            else:
-                # Try to close gracefully.
-                if self._sender is not None:
-                    self._sender.initiate_close()
-                    self._sender.join(timeout)
+            elif self._sender is not None:
+                self._sender.initiate_close()
+                self._sender.join(timeout)
 
         if self._sender is not None and self._sender.is_alive():
             log.info("Proceeding to force close the producer since pending"
@@ -573,7 +575,7 @@ class KafkaProducer(object):
         """
         assert value is not None or self.config['api_version'] >= (0, 8, 1), (
             'Null messages require kafka >= 0.8.1')
-        assert not (value is None and key is None), 'Need at least one: key or value'
+        assert value is not None or key is not None, 'Need at least one: key or value'
         key_bytes = value_bytes = None
         try:
             self._wait_on_metadata(topic, self.config['max_block_ms'] / 1000.0)
@@ -712,9 +714,7 @@ class KafkaProducer(object):
     def _serialize(self, f, topic, data):
         if not f:
             return data
-        if isinstance(f, Serializer):
-            return f.serialize(topic, data)
-        return f(data)
+        return f.serialize(topic, data) if isinstance(f, Serializer) else f(data)
 
     def _partition(self, topic, partition, key, value,
                    serialized_key, serialized_value):

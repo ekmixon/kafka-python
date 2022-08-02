@@ -45,7 +45,10 @@ def kafka_broker_factory(zookeeper):
 @pytest.fixture
 def kafka_client(kafka_broker, request):
     """Return a KafkaClient fixture"""
-    (client,) = kafka_broker.get_clients(cnt=1, client_id='%s_client' % (request.node.name,))
+    (client,) = kafka_broker.get_clients(
+        cnt=1, client_id=f'{request.node.name}_client'
+    )
+
     yield client
     client.close()
 
@@ -63,7 +66,7 @@ def kafka_consumer_factory(kafka_broker, topic, request):
 
     def factory(**kafka_consumer_params):
         params = {} if kafka_consumer_params is None else kafka_consumer_params.copy()
-        params.setdefault('client_id', 'consumer_%s' % (request.node.name,))
+        params.setdefault('client_id', f'consumer_{request.node.name}')
         params.setdefault('auto_offset_reset', 'earliest')
         _consumer[0] = next(kafka_broker.get_consumers(cnt=1, topics=[topic], **params))
         return _consumer[0]
@@ -87,7 +90,7 @@ def kafka_producer_factory(kafka_broker, request):
 
     def factory(**kafka_producer_params):
         params = {} if kafka_producer_params is None else kafka_producer_params.copy()
-        params.setdefault('client_id', 'producer_%s' % (request.node.name,))
+        params.setdefault('client_id', f'producer_{request.node.name}')
         _producer[0] = next(kafka_broker.get_producers(cnt=1, **params))
         return _producer[0]
 
@@ -119,7 +122,7 @@ def kafka_admin_client_factory(kafka_broker):
 @pytest.fixture
 def topic(kafka_broker, request):
     """Return a topic fixture"""
-    topic_name = '%s_%s' % (request.node.name, random_string(10))
+    topic_name = f'{request.node.name}_{random_string(10)}'
     kafka_broker.create_topics([topic_name])
     return topic_name
 

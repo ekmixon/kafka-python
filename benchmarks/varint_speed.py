@@ -167,22 +167,21 @@ def encode_varint_4(value, int2byte=six.int2byte):
             int2byte(0x80 | ((value >> 7) & 0x7f)) + \
             int2byte(0x80 | ((value >> 14) & 0x7f)) + \
             int2byte(value >> 21)
-    if value <= 0x7ffffffff:  # 5 bytes
+    if value <= 0x7ffffffff:
         return int2byte(0x80 | (value & 0x7f)) + \
             int2byte(0x80 | ((value >> 7) & 0x7f)) + \
             int2byte(0x80 | ((value >> 14) & 0x7f)) + \
             int2byte(0x80 | ((value >> 21) & 0x7f)) + \
             int2byte(value >> 28)
-    else:
-        # Return to general algorithm
+    # Return to general algorithm
+    bits = value & 0x7f
+    value >>= 7
+    res = b""
+    while value:
+        res += int2byte(0x80 | bits)
         bits = value & 0x7f
         value >>= 7
-        res = b""
-        while value:
-            res += int2byte(0x80 | bits)
-            bits = value & 0x7f
-            value >>= 7
-        return res + int2byte(bits)
+    return res + int2byte(bits)
 
 
 _assert_valid_enc(encode_varint_4)
@@ -294,9 +293,7 @@ def size_of_varint_2(value):
         return 7
     if value <= 0xffffffffffffff:
         return 8
-    if value <= 0x7fffffffffffffff:
-        return 9
-    return 10
+    return 9 if value <= 0x7fffffffffffffff else 10
 
 _assert_valid_size(size_of_varint_2)
 
@@ -405,9 +402,7 @@ for bench_func in [
         encode_varint_2,
         encode_varint_4]:
     for i, value in enumerate(BENCH_VALUES_ENC):
-        runner.bench_func(
-            '{}_{}byte'.format(bench_func.__name__, i + 1),
-            bench_func, value)
+        runner.bench_func(f'{bench_func.__name__}_{i + 1}byte', bench_func, value)
 
 # Encode algorithms writing to the buffer
 for bench_func in [
@@ -417,20 +412,18 @@ for bench_func in [
     for i, value in enumerate(BENCH_VALUES_ENC):
         fname = bench_func.__name__
         runner.timeit(
-            '{}_{}byte'.format(fname, i + 1),
-            stmt="{}({}, buffer)".format(fname, value),
-            setup="from __main__ import {}; buffer = bytearray(10)".format(
-                fname)
+            f'{fname}_{i + 1}byte',
+            stmt=f"{fname}({value}, buffer)",
+            setup=f"from __main__ import {fname}; buffer = bytearray(10)",
         )
+
 
 # Size algorithms
 for bench_func in [
         size_of_varint_1,
         size_of_varint_2]:
     for i, value in enumerate(BENCH_VALUES_ENC):
-        runner.bench_func(
-            '{}_{}byte'.format(bench_func.__name__, i + 1),
-            bench_func, value)
+        runner.bench_func(f'{bench_func.__name__}_{i + 1}byte', bench_func, value)
 
 # Decode algorithms
 for bench_func in [
@@ -438,6 +431,4 @@ for bench_func in [
         decode_varint_2,
         decode_varint_3]:
     for i, value in enumerate(BENCH_VALUES_DEC):
-        runner.bench_func(
-            '{}_{}byte'.format(bench_func.__name__, i + 1),
-            bench_func, value)
+        runner.bench_func(f'{bench_func.__name__}_{i + 1}byte', bench_func, value)

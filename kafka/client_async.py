@@ -253,15 +253,11 @@ class KafkaClient(object):
 
         next_at = self._last_bootstrap + backoff_ms / 1000.0
         now = time.time()
-        if next_at > now:
-            return False
-        return True
+        return next_at <= now
 
     def _can_connect(self, node_id):
         if node_id not in self._conns:
-            if self.cluster.broker_metadata(node_id):
-                return True
-            return False
+            return bool(self.cluster.broker_metadata(node_id))
         conn = self._conns[node_id]
         return conn.disconnected() and not conn.blacked_out()
 
@@ -302,7 +298,6 @@ class KafkaClient(object):
                         if self.cluster.is_bootstrap(node_id):
                             self._conns.pop(node_id).close()
 
-            # Connection failures imply that our metadata is stale, so let's refresh
             elif conn.state is ConnectionStates.DISCONNECTED:
                 if node_id in self._connecting:
                     self._connecting.remove(node_id)
@@ -314,9 +309,7 @@ class KafkaClient(object):
                 if self._sensors:
                     self._sensors.connection_closed.record()
 
-                idle_disconnect = False
-                if self._idle_expiry_manager.is_expired(node_id):
-                    idle_disconnect = True
+                idle_disconnect = bool(self._idle_expiry_manager.is_expired(node_id))
                 self._idle_expiry_manager.remove(node_id)
 
                 # If the connection has already by popped from self._conns,
@@ -369,7 +362,7 @@ class KafkaClient(object):
 
             if conn is None:
                 broker = self.cluster.broker_metadata(node_id)
-                assert broker, 'Broker id %s not in current metadata' % (node_id,)
+                assert broker, f'Broker id {node_id} not in current metadata'
 
                 log.debug("Initiating connection to node %s at %s:%s",
                           node_id, broker.host, broker.port)
@@ -381,7 +374,6 @@ class KafkaClient(object):
                                         **self.config)
                 self._conns[node_id] = conn
 
-            # Check if existing connection should be recreated because host/port changed
             elif self._should_recycle_connection(conn):
                 self._conns.pop(node_id)
                 return False
@@ -409,9 +401,7 @@ class KafkaClient(object):
     def connected(self, node_id):
         """Return True iff the node_id is connected."""
         conn = self._conns.get(node_id)
-        if conn is None:
-            return False
-        return conn.connected()
+        return False if conn is None else conn.connected()
 
     def _close(self):
         if not self._closed:
@@ -457,9 +447,7 @@ class KafkaClient(object):
             bool: True iff the node exists and is disconnected
         """
         conn = self._conns.get(node_id)
-        if conn is None:
-            return False
-        return conn.disconnected()
+        return False if conn is None else conn.disconnected()
 
     def connection_delay(self, node_id):
         """
@@ -476,9 +464,7 @@ class KafkaClient(object):
             int: The number of milliseconds to wait.
         """
         conn = self._conns.get(node_id)
-        if conn is None:
-            return 0
-        return conn.connection_delay()
+        return 0 if conn is None else conn.connection_delay()
 
     def is_ready(self, node_id, metadata_priority=True):
         """Check whether a node is ready to send more requests.
@@ -508,9 +494,7 @@ class KafkaClient(object):
 
     def _can_send_request(self, node_id):
         conn = self._conns.get(node_id)
-        if not conn:
-            return False
-        return conn.connected() and conn.can_send_more()
+        return conn.connected() and conn.can_send_more() if conn else False
 
     def send(self, node_id, request, wakeup=True):
         """Send a request to a specific node. Bytes are placed on an
@@ -568,7 +552,7 @@ class KafkaClient(object):
         elif timeout_ms is None:
             timeout_ms = self.config['request_timeout_ms']
         elif not isinstance(timeout_ms, (int, float)):
-            raise TypeError('Invalid type for timeout: %s' % type(timeout_ms))
+            raise TypeError(f'Invalid type for timeout: {type(timeout_ms)}')
 
         # Loop for futures, break after first loop if None
         responses = []
@@ -646,17 +630,16 @@ class KafkaClient(object):
                 conn = key.data
                 if conn.connecting():
                     conn.connect()
-                else:
-                    if conn.send_pending_requests_v2():
-                        # If send is complete, we dont need to track write readiness
-                        # for this socket anymore
-                        if key.events ^ selectors.EVENT_WRITE:
-                            self._selector.modify(
-                                key.fileobj,
-                                key.events ^ selectors.EVENT_WRITE,
-                                key.data)
-                        else:
-                            self._selector.unregister(key.fileobj)
+                elif conn.send_pending_requests_v2():
+                    # If send is complete, we dont need to track write readiness
+                    # for this socket anymore
+                    if key.events ^ selectors.EVENT_WRITE:
+                        self._selector.modify(
+                            key.fileobj,
+                            key.events ^ selectors.EVENT_WRITE,
+                            key.data)
+                    else:
+                        self._selector.unregister(key.fileobj)
 
             if not (events & selectors.EVENT_READ):
                 continue
@@ -675,8 +658,7 @@ class KafkaClient(object):
                 #
                 # Do a 1-byte read to check protocol didnt get out of sync, and then close the conn
                 try:
-                    unexpected_data = key.fileobj.recv(1)
-                    if unexpected_data:  # anything other than a 0-byte read means protocol issues
+                    if unexpected_data := key.fileobj.recv(1):
                         log.warning('Protocol out of sync on %r, closing', conn)
                 except socket.error:
                     pass
@@ -697,9 +679,12 @@ class KafkaClient(object):
             if conn.requests_timed_out():
                 log.warning('%s timed out after %s ms. Closing connection.',
                             conn, conn.config['request_timeout_ms'])
-                conn.close(error=Errors.RequestTimedOutError(
-                    'Request timed out after %s ms' %
-                    conn.config['request_timeout_ms']))
+                conn.close(
+                    error=Errors.RequestTimedOutError(
+                        f"Request timed out after {conn.config['request_timeout_ms']} ms"
+                    )
+                )
+
 
         if self._sensors:
             self._sensors.io_time.record((time.time() - end_select) * 1000000000)
@@ -716,14 +701,10 @@ class KafkaClient(object):
         Returns:
             int: pending in-flight requests for the node, or all nodes if None
         """
-        if node_id is not None:
-            conn = self._conns.get(node_id)
-            if conn is None:
-                return 0
-            return len(conn.in_flight_requests)
-        else:
-            return sum([len(conn.in_flight_requests)
-                        for conn in list(self._conns.values())])
+        if node_id is None:
+            return sum(len(conn.in_flight_requests) for conn in list(self._conns.values()))
+        conn = self._conns.get(node_id)
+        return 0 if conn is None else len(conn.in_flight_requests)
 
     def _fire_pending_completed_requests(self):
         responses = []
@@ -891,7 +872,6 @@ class KafkaClient(object):
         self._lock.acquire()
         end = time.time() + timeout
         while time.time() < end:
-
             # It is possible that least_loaded_node falls back to bootstrap,
             # which can block for an increasing backoff period
             try_node = node_id or self.least_loaded_node()
@@ -921,10 +901,8 @@ class KafkaClient(object):
             finally:
                 self._refresh_on_disconnects = True
 
-        # Timeout
-        else:
-            self._lock.release()
-            raise Errors.NoBrokersAvailable()
+        self._lock.release()
+        raise Errors.NoBrokersAvailable()
 
     def wakeup(self):
         with self._wake_lock:
@@ -945,8 +923,9 @@ class KafkaClient(object):
                 break
 
     def _maybe_close_oldest_connection(self):
-        expired_connection = self._idle_expiry_manager.poll_expired_connection()
-        if expired_connection:
+        if (
+            expired_connection := self._idle_expiry_manager.poll_expired_connection()
+        ):
             conn_id, ts = expired_connection
             idle_ms = (time.time() - ts) * 1000
             log.info('Closing idle connection %s, last active %d ms ago', conn_id, idle_ms)
@@ -959,8 +938,7 @@ class KafkaClient(object):
                 continue
             if self._conns[node_id].connected():
                 return True
-        else:
-            return False
+        return False
 
 
 # OrderedDict requires python2.7+
@@ -1036,7 +1014,7 @@ class IdleConnectionManager(object):
 class KafkaClientMetrics(object):
     def __init__(self, metrics, metric_group_prefix, conns):
         self.metrics = metrics
-        self.metric_group_name = metric_group_prefix + '-metrics'
+        self.metric_group_name = f'{metric_group_prefix}-metrics'
 
         self.connection_closed = metrics.sensor('connections-closed')
         self.connection_closed.add(metrics.metric_name(

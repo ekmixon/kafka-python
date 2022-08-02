@@ -100,8 +100,9 @@ class MemoryRecords(ABCRecords):
             return None
         if len(next_slice) < _min_slice:
             raise CorruptRecordException(
-                "Record size is less than the minimum record overhead "
-                "({})".format(_min_slice - self.LOG_OVERHEAD))
+                f"Record size is less than the minimum record overhead ({_min_slice - self.LOG_OVERHEAD})"
+            )
+
         self._cache_next()
         magic, = struct.unpack_from(">b", next_slice, _magic_offset)
         if magic <= 1:
@@ -164,20 +165,14 @@ class MemoryRecordsBuilder(object):
         self._closed = True
 
     def size_in_bytes(self):
-        if not self._closed:
-            return self._builder.size()
-        else:
-            return len(self._buffer)
+        return len(self._buffer) if self._closed else self._builder.size()
 
     def compression_rate(self):
         assert self._closed
         return self.size_in_bytes() / self._bytes_written
 
     def is_full(self):
-        if self._closed:
-            return True
-        else:
-            return self._builder.size() >= self._batch_size
+        return True if self._closed else self._builder.size() >= self._batch_size
 
     def next_offset(self):
         return self._next_offset

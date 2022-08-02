@@ -60,8 +60,10 @@ class RoundRobinPartitionAssignor(AbstractPartitionAssignor):
             if partitions is None:
                 log.warning('No partition metadata for topic %s', topic)
                 continue
-            for partition in partitions:
-                all_topic_partitions.append(TopicPartition(topic, partition))
+            all_topic_partitions.extend(
+                TopicPartition(topic, partition) for partition in partitions
+            )
+
         all_topic_partitions.sort()
 
         # construct {member_id: {topic: [partition, ...]}}
@@ -79,13 +81,12 @@ class RoundRobinPartitionAssignor(AbstractPartitionAssignor):
                 member_id = next(member_iter)
             assignment[member_id][partition.topic].append(partition.partition)
 
-        protocol_assignment = {}
-        for member_id in member_metadata:
-            protocol_assignment[member_id] = ConsumerProtocolMemberAssignment(
-                cls.version,
-                sorted(assignment[member_id].items()),
-                b'')
-        return protocol_assignment
+        return {
+            member_id: ConsumerProtocolMemberAssignment(
+                cls.version, sorted(assignment[member_id].items()), b''
+            )
+            for member_id in member_metadata
+        }
 
     @classmethod
     def metadata(cls, topics):

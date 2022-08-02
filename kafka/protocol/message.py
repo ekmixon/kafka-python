@@ -78,7 +78,7 @@ class Message(Struct):
         elif version == 0:
             fields = (self.crc, self.magic, self.attributes, self.key, self.value)
         else:
-            raise ValueError('Unrecognized message version: %s' % (version,))
+            raise ValueError(f'Unrecognized message version: {version}')
         message = Message.SCHEMAS[version].encode(fields)
         if not recalc_crc:
             return message
@@ -93,14 +93,11 @@ class Message(Struct):
             _validated_crc = crc32(data[4:])
             data = io.BytesIO(data)
         # Partial decode required to determine message version
-        base_fields = cls.SCHEMAS[0].fields[0:3]
+        base_fields = cls.SCHEMAS[0].fields[:3]
         crc, magic, attributes = [field.decode(data) for field in base_fields]
         remaining = cls.SCHEMAS[magic].fields[3:]
         fields = [field.decode(data) for field in remaining]
-        if magic == 1:
-            timestamp = fields[0]
-        else:
-            timestamp = None
+        timestamp = fields[0] if magic == 1 else None
         msg = cls(fields[-1], key=fields[-2],
                   magic=magic, attributes=attributes, crc=crc,
                   timestamp=timestamp)
@@ -111,9 +108,7 @@ class Message(Struct):
         if self._validated_crc is None:
             raw_msg = self._encode_self(recalc_crc=False)
             self._validated_crc = crc32(raw_msg[4:])
-        if self.crc == self._validated_crc:
-            return True
-        return False
+        return self.crc == self._validated_crc
 
     def is_compressed(self):
         return self.attributes & self.CODEC_MASK != 0
@@ -147,7 +142,7 @@ class Message(Struct):
 
 class PartialMessage(bytes):
     def __repr__(self):
-        return 'PartialMessage(%s)' % (self,)
+        return f'PartialMessage({self})'
 
 
 class MessageSet(AbstractType):
@@ -170,13 +165,9 @@ class MessageSet(AbstractType):
 
         encoded_values = []
         for (offset, message) in items:
-            encoded_values.append(Int64.encode(offset))
-            encoded_values.append(Bytes.encode(message))
+            encoded_values.extend((Int64.encode(offset), Bytes.encode(message)))
         encoded = b''.join(encoded_values)
-        if prepend_size:
-            return Bytes.encode(encoded)
-        else:
-            return encoded
+        return Bytes.encode(encoded) if prepend_size else encoded
 
     @classmethod
     def decode(cls, data, bytes_to_read=None):

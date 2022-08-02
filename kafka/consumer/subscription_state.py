@@ -67,7 +67,7 @@ class SubscriptionState(object):
         self.subscribed_pattern = None # regex str or None
         self._group_subscription = set()
         self._user_assignment = set()
-        self.assignment = dict()
+        self.assignment = {}
         self.listener = None
 
         # initialize to true for the consumers to fetch offset upon starting up
@@ -134,7 +134,7 @@ class SubscriptionState(object):
             raise TypeError('All topics must be strings')
         if len(topic) == 0:
             raise ValueError('All topics must be non-empty strings')
-        if topic == '.' or topic == '..':
+        if topic in ['.', '..']:
             raise ValueError('Topic name cannot be "." or ".."')
         if len(topic) > self._MAX_NAME_LENGTH:
             raise ValueError('Topic name is illegal, it can\'t be longer than {0} characters, topic: "{1}"'.format(self._MAX_NAME_LENGTH, topic))
@@ -247,7 +247,7 @@ class SubscriptionState(object):
 
         for tp in assignments:
             if tp.topic not in self.subscription:
-                raise ValueError("Assigned partition %s for non-subscribed topic." % (tp,))
+                raise ValueError(f"Assigned partition {tp} for non-subscribed topic.")
 
         # after rebalancing, we always reinitialize the assignment state
         self.assignment.clear()
@@ -299,16 +299,17 @@ class SubscriptionState(object):
 
     def paused_partitions(self):
         """Return current set of paused TopicPartitions."""
-        return set(partition for partition in self.assignment
-                   if self.is_paused(partition))
+        return {
+            partition for partition in self.assignment if self.is_paused(partition)
+        }
 
     def fetchable_partitions(self):
         """Return set of TopicPartitions that should be Fetched."""
-        fetchable = set()
-        for partition, state in six.iteritems(self.assignment):
-            if state.is_fetchable():
-                fetchable.add(partition)
-        return fetchable
+        return {
+            partition
+            for partition, state in six.iteritems(self.assignment)
+            if state.is_fetchable()
+        }
 
     def partitions_auto_assigned(self):
         """Return True unless user supplied partitions manually."""
@@ -316,11 +317,11 @@ class SubscriptionState(object):
 
     def all_consumed_offsets(self):
         """Returns consumed offsets as {TopicPartition: OffsetAndMetadata}"""
-        all_consumed = {}
-        for partition, state in six.iteritems(self.assignment):
-            if state.has_valid_position:
-                all_consumed[partition] = OffsetAndMetadata(state.position, '')
-        return all_consumed
+        return {
+            partition: OffsetAndMetadata(state.position, '')
+            for partition, state in six.iteritems(self.assignment)
+            if state.has_valid_position
+        }
 
     def need_offset_reset(self, partition, offset_reset_strategy=None):
         """Mark partition for offset reset using specified or default strategy.
@@ -341,17 +342,14 @@ class SubscriptionState(object):
         return self.assignment[partition].awaiting_reset
 
     def has_all_fetch_positions(self):
-        for state in self.assignment.values():
-            if not state.has_valid_position:
-                return False
-        return True
+        return all(state.has_valid_position for state in self.assignment.values())
 
     def missing_fetch_positions(self):
-        missing = set()
-        for partition, state in six.iteritems(self.assignment):
-            if not state.has_valid_position:
-                missing.add(partition)
-        return missing
+        return {
+            partition
+            for partition, state in six.iteritems(self.assignment)
+            if not state.has_valid_position
+        }
 
     def is_assigned(self, partition):
         return partition in self.assignment

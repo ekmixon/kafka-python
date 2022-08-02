@@ -19,6 +19,4 @@ class Avg(AbstractSampledStat):
         for sample in samples:
             total_sum += sample.value
             total_count += sample.event_count
-        if not total_count:
-            return 0
-        return float(total_sum) / total_count
+        return float(total_sum) / total_count if total_count else 0

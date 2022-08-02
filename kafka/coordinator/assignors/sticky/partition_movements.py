@@ -27,10 +27,10 @@ def is_sublist(source, target):
     Returns:
       true if target is in source; false otherwise
     """
-    for index in (i for i, e in enumerate(source) if e == target[0]):
-        if tuple(source[index: index + len(target)]) == target:
-            return True
-    return False
+    return any(
+        tuple(source[index : index + len(target)]) == target
+        for index in (i for i, e in enumerate(source) if e == target[0])
+    )
 
 
 class PartitionMovements:
@@ -78,10 +78,9 @@ class PartitionMovements:
             movement_pairs = set(movements.keys())
             if self._has_cycles(movement_pairs):
                 log.error(
-                    "Stickiness is violated for topic {}\n"
-                    "Partition movements for this topic occurred among the following consumer pairs:\n"
-                    "{}".format(topic, movement_pairs)
+                    f"Stickiness is violated for topic {topic}\nPartition movements for this topic occurred among the following consumer pairs:\n{movement_pairs}"
                 )
+
                 return False
         return True
 
@@ -111,25 +110,19 @@ class PartitionMovements:
                 path, cycles
             ):
                 cycles.add(tuple(path))
-                log.error("A cycle of length {} was found: {}".format(len(path) - 1, path))
+                log.error(f"A cycle of length {len(path) - 1} was found: {path}")
 
-        # for now we want to make sure there is no partition movements of the same topic between a pair of consumers.
-        # the odds of finding a cycle among more than two consumers seem to be very low (according to various randomized
-        # tests with the given sticky algorithm) that it should not worth the added complexity of handling those cases.
-        for cycle in cycles:
-            if len(cycle) == 3:  # indicates a cycle of length 2
-                return True
-        return False
+        return any(len(cycle) == 3 for cycle in cycles)
 
     @staticmethod
     def _is_subcycle(cycle, cycles):
         super_cycle = deepcopy(cycle)
         super_cycle = super_cycle[:-1]
         super_cycle.extend(cycle)
-        for found_cycle in cycles:
-            if len(found_cycle) == len(cycle) and is_sublist(super_cycle, found_cycle):
-                return True
-        return False
+        return any(
+            len(found_cycle) == len(cycle) and is_sublist(super_cycle, found_cycle)
+            for found_cycle in cycles
+        )
 
     def _is_linked(self, src, dst, pairs, current_path):
         if src == dst:

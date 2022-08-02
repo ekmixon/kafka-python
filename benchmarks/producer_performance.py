@@ -79,7 +79,7 @@ class ProducerPerformance(object):
             print('-> OK!')
             print()
 
-            for i in range(args.num_records):
+            for _ in range(args.num_records):
                 producer.send(topic=args.topic, value=record)
             producer.flush()
 
@@ -117,8 +117,7 @@ class StatsReporter(threading.Thread):
     def run(self):
         while self.event and not self.event.wait(self.interval):
             self.print_stats()
-        else:
-            self.print_final()
+        self.print_final()
 
 
 def get_args_parser():

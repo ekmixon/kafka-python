@@ -96,7 +96,7 @@ def test_create_fetch_requests(fetcher, mocker, api_version, fetch_version):
     fetcher.config['api_version'] = api_version
     by_node = fetcher._create_fetch_requests()
     requests = by_node.values()
-    assert all([isinstance(r, FetchRequest[fetch_version]) for r in requests])
+    assert all(isinstance(r, FetchRequest[fetch_version]) for r in requests)
 
 
 def test_update_fetch_positions(fetcher, topic, mocker):
@@ -116,7 +116,7 @@ def test_update_fetch_positions(fetcher, topic, mocker):
     fetcher._subscriptions.assignment[partition].awaiting_reset = False
     fetcher.update_fetch_positions([partition])
     fetcher._reset_offset.assert_called_with(partition)
-    assert fetcher._subscriptions.assignment[partition].awaiting_reset is True
+    assert fetcher._subscriptions.assignment[partition].awaiting_reset
     fetcher.update_fetch_positions([partition])
     fetcher._reset_offset.assert_called_with(partition)
 
@@ -303,9 +303,7 @@ def test_fetched_records(fetcher, topic, mocker):
     fetcher.config['check_crcs'] = False
     tp = TopicPartition(topic, 0)
 
-    msgs = []
-    for i in range(10):
-        msgs.append((None, b"foo", None))
+    msgs = [(None, b"foo", None) for _ in range(10)]
     completed_fetch = CompletedFetch(
         tp, 0, 0, [0, 100, _build_record_batch(msgs)],
         mocker.MagicMock()
@@ -401,9 +399,7 @@ def test__unpack_message_set(fetcher):
 def test__message_generator(fetcher, topic, mocker):
     fetcher.config['check_crcs'] = False
     tp = TopicPartition(topic, 0)
-    msgs = []
-    for i in range(10):
-        msgs.append((None, b"foo", None))
+    msgs = [(None, b"foo", None) for _ in range(10)]
     completed_fetch = CompletedFetch(
         tp, 0, 0, [0, 100, _build_record_batch(msgs)],
         mocker.MagicMock()
@@ -419,9 +415,7 @@ def test__message_generator(fetcher, topic, mocker):
 def test__parse_fetched_data(fetcher, topic, mocker):
     fetcher.config['check_crcs'] = False
     tp = TopicPartition(topic, 0)
-    msgs = []
-    for i in range(10):
-        msgs.append((None, b"foo", None))
+    msgs = [(None, b"foo", None) for _ in range(10)]
     completed_fetch = CompletedFetch(
         tp, 0, 0, [0, 100, _build_record_batch(msgs)],
         mocker.MagicMock()
@@ -434,9 +428,7 @@ def test__parse_fetched_data(fetcher, topic, mocker):
 def test__parse_fetched_data__paused(fetcher, topic, mocker):
     fetcher.config['check_crcs'] = False
     tp = TopicPartition(topic, 0)
-    msgs = []
-    for i in range(10):
-        msgs.append((None, b"foo", None))
+    msgs = [(None, b"foo", None) for _ in range(10)]
     completed_fetch = CompletedFetch(
         tp, 0, 0, [0, 100, _build_record_batch(msgs)],
         mocker.MagicMock()
@@ -449,9 +441,7 @@ def test__parse_fetched_data__paused(fetcher, topic, mocker):
 def test__parse_fetched_data__stale_offset(fetcher, topic, mocker):
     fetcher.config['check_crcs'] = False
     tp = TopicPartition(topic, 0)
-    msgs = []
-    for i in range(10):
-        msgs.append((None, b"foo", None))
+    msgs = [(None, b"foo", None) for _ in range(10)]
     completed_fetch = CompletedFetch(
         tp, 10, 0, [0, 100, _build_record_batch(msgs)],
         mocker.MagicMock()

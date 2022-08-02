@@ -19,16 +19,17 @@ def test_kafka_version_infer(kafka_consumer_factory):
     client = consumer._client
     conn = list(client._conns.values())[0]
     inferred_ver_major_minor = conn.check_version()[:2]
-    assert actual_ver_major_minor == inferred_ver_major_minor, \
-        "Was expecting inferred broker version to be %s but was %s" % (actual_ver_major_minor, inferred_ver_major_minor)
+    assert (
+        actual_ver_major_minor == inferred_ver_major_minor
+    ), f"Was expecting inferred broker version to be {actual_ver_major_minor} but was {inferred_ver_major_minor}"
 
 
 @pytest.mark.skipif(not env_kafka_version(), reason="No KAFKA_VERSION set")
 def test_kafka_consumer(kafka_consumer_factory, send_messages):
     """Test KafkaConsumer"""
     consumer = kafka_consumer_factory(auto_offset_reset='earliest')
-    send_messages(range(0, 100), partition=0)
-    send_messages(range(0, 100), partition=1)
+    send_messages(range(100), partition=0)
+    send_messages(range(100), partition=1)
     cnt = 0
     messages = {0: [], 1: []}
     for message in consumer:
@@ -77,12 +78,12 @@ def test_kafka_consumer__blocking(kafka_consumer_factory, topic, send_messages):
             msg = next(consumer)
     assert t.interval >= (TIMEOUT_MS / 1000.0)
 
-    send_messages(range(0, 10))
+    send_messages(range(10))
 
     # Ask for 5 messages, 10 in queue. Get 5 back, no blocking
     messages = []
     with Timer() as t:
-        for i in range(5):
+        for _ in range(5):
             msg = next(consumer)
             messages.append(msg)
     assert_message_count(messages, 5)
@@ -92,7 +93,7 @@ def test_kafka_consumer__blocking(kafka_consumer_factory, topic, send_messages):
     messages = []
     with Timer() as t:
         with pytest.raises(StopIteration):
-            for i in range(10):
+            for _ in range(10):
                 msg = next(consumer)
                 messages.append(msg)
     assert_message_count(messages, 5)
@@ -103,7 +104,7 @@ def test_kafka_consumer__blocking(kafka_consumer_factory, topic, send_messages):
 def test_kafka_consumer__offset_commit_resume(kafka_consumer_factory, send_messages):
     GROUP_ID = random_string(10)
 
-    send_messages(range(0, 100), partition=0)
+    send_messages(range(100), partition=0)
     send_messages(range(100, 200), partition=1)
 
     # Start a consumer and grab the first 180 messages
@@ -152,10 +153,10 @@ def test_kafka_consumer_max_bytes_simple(kafka_consumer_factory, topic, send_mes
     consumer = kafka_consumer_factory(
         auto_offset_reset='earliest', fetch_max_bytes=300)
     seen_partitions = set()
-    for i in range(90):
+    for _ in range(90):
         poll_res = consumer.poll(timeout_ms=100)
         for partition, msgs in poll_res.items():
-            for msg in msgs:
+            for _ in msgs:
                 seen_partitions.add(partition)
 
     # Check that we fetched at least 1 message from both partitions
@@ -177,14 +178,14 @@ def test_kafka_consumer_max_bytes_one_msg(kafka_consumer_factory, send_messages)
     # how many messages are included in a FetchResponse, as long as it is
     # non-zero. I would not mind if we deleted this test. It caused
     # a minor headache when testing 0.11.0.0.
-    group = 'test-kafka-consumer-max-bytes-one-msg-' + random_string(5)
+    group = f'test-kafka-consumer-max-bytes-one-msg-{random_string(5)}'
     consumer = kafka_consumer_factory(
         group_id=group,
         auto_offset_reset='earliest',
         consumer_timeout_ms=5000,
         fetch_max_bytes=1)
 
-    fetched_msgs = [next(consumer) for i in range(10)]
+    fetched_msgs = [next(consumer) for _ in range(10)]
     assert_message_count(fetched_msgs, 10)
 
 

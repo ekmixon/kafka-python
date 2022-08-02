@@ -117,11 +117,7 @@ class Response(Struct):
 def _to_object(schema, data):
     obj = {}
     for idx, (name, _type) in enumerate(zip(schema.names, schema.fields)):
-        if isinstance(data, Struct):
-            val = data.get_item(name)
-        else:
-            val = data[idx]
-
+        val = data.get_item(name) if isinstance(data, Struct) else data[idx]
         if isinstance(_type, Schema):
             obj[name] = _to_object(_type, val)
         elif isinstance(_type, Array):

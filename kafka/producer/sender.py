@@ -280,12 +280,15 @@ class Sender(threading.Thread):
         Returns:
             dict: {node_id: ProduceRequest} (version depends on api_version)
         """
-        requests = {}
-        for node_id, batches in six.iteritems(collated):
-            requests[node_id] = self._produce_request(
-                node_id, self.config['acks'],
-                self.config['request_timeout_ms'], batches)
-        return requests
+        return {
+            node_id: self._produce_request(
+                node_id,
+                self.config['acks'],
+                self.config['request_timeout_ms'],
+                batches,
+            )
+            for node_id, batches in six.iteritems(collated)
+        }
 
     def _produce_request(self, node_id, acks, timeout, batches):
         """Create a produce request from the given record batches.
@@ -440,30 +443,49 @@ class SenderMetrics(object):
         # then all other sensors should have been registered; and vice versa
         if not self.metrics.get_sensor(sensor_name('records-per-batch')):
 
-            self.add_metric('record-send-rate', Rate(),
-                            sensor_name=sensor_name('records-per-batch'),
-                            group_name='producer-topic-metrics.' + topic,
-                            description= 'Records sent per second for topic ' + topic)
+            self.add_metric(
+                'record-send-rate',
+                Rate(),
+                sensor_name=sensor_name('records-per-batch'),
+                group_name=f'producer-topic-metrics.{topic}',
+                description=f'Records sent per second for topic {topic}',
+            )
 
-            self.add_metric('byte-rate', Rate(),
-                            sensor_name=sensor_name('bytes'),
-                            group_name='producer-topic-metrics.' + topic,
-                            description='Bytes per second for topic ' + topic)
 
-            self.add_metric('compression-rate', Avg(),
-                            sensor_name=sensor_name('compression-rate'),
-                            group_name='producer-topic-metrics.' + topic,
-                            description='Average Compression ratio for topic ' + topic)
+            self.add_metric(
+                'byte-rate',
+                Rate(),
+                sensor_name=sensor_name('bytes'),
+                group_name=f'producer-topic-metrics.{topic}',
+                description=f'Bytes per second for topic {topic}',
+            )
 
-            self.add_metric('record-retry-rate', Rate(),
-                            sensor_name=sensor_name('record-retries'),
-                            group_name='producer-topic-metrics.' + topic,
-                            description='Record retries per second for topic ' + topic)
 
-            self.add_metric('record-error-rate', Rate(),
-                            sensor_name=sensor_name('record-errors'),
-                            group_name='producer-topic-metrics.' + topic,
-                            description='Record errors per second for topic ' + topic)
+            self.add_metric(
+                'compression-rate',
+                Avg(),
+                sensor_name=sensor_name('compression-rate'),
+                group_name=f'producer-topic-metrics.{topic}',
+                description=f'Average Compression ratio for topic {topic}',
+            )
+
+
+            self.add_metric(
+                'record-retry-rate',
+                Rate(),
+                sensor_name=sensor_name('record-retries'),
+                group_name=f'producer-topic-metrics.{topic}',
+                description=f'Record retries per second for topic {topic}',
+            )
+
+
+            self.add_metric(
+                'record-error-rate',
+                Rate(),
+                sensor_name=sensor_name('record-errors'),
+                group_name=f'producer-topic-metrics.{topic}',
+                description=f'Record errors per second for topic {topic}',
+            )
 
     def update_produce_request_metrics(self, batches_map):
         for node_batch in batches_map.values():
@@ -476,17 +498,20 @@ class SenderMetrics(object):
 
                 # per-topic record send rate
                 topic_records_count = self.metrics.get_sensor(
-                    'topic.' + topic + '.records-per-batch')
+                    f'topic.{topic}.records-per-batch'
+                )
+
                 topic_records_count.record(batch.record_count)
 
                 # per-topic bytes send rate
-                topic_byte_rate = self.metrics.get_sensor(
-                    'topic.' + topic + '.bytes')
+                topic_byte_rate = self.metrics.get_sensor(f'topic.{topic}.bytes')
                 topic_byte_rate.record(batch.records.size_in_bytes())
 
                 # per-topic compression rate
                 topic_compression_rate = self.metrics.get_sensor(
-                    'topic.' + topic + '.compression-rate')
+                    f'topic.{topic}.compression-rate'
+                )
+
                 topic_compression_rate.record(batch.records.compression_rate())
 
                 # global metrics
@@ -503,14 +528,12 @@ class SenderMetrics(object):
 
     def record_retries(self, topic, count):
         self.retry_sensor.record(count)
-        sensor = self.metrics.get_sensor('topic.' + topic + '.record-retries')
-        if sensor:
+        if sensor := self.metrics.get_sensor(f'topic.{topic}.record-retries'):
             sensor.record(count)
 
     def record_errors(self, topic, count):
         self.error_sensor.record(count)
-        sensor = self.metrics.get_sensor('topic.' + topic + '.record-errors')
-        if sensor:
+        if sensor := self.metrics.get_sensor(f'topic.{topic}.record-errors'):
             sensor.record(count)
 
     def record_throttle_time(self, throttle_time_ms, node=None):

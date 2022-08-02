@@ -43,7 +43,7 @@ def test_produce_and_consume(request, sasl_kafka):
 
     messages_and_futures = []  # [(message, produce_future),]
     for i in range(100):
-        encoded_msg = "{}-{}-{}".format(i, request.node.name, uuid.uuid4()).encode("utf-8")
+        encoded_msg = f"{i}-{request.node.name}-{uuid.uuid4()}".encode("utf-8")
         future = producer.send(topic_name, value=encoded_msg, partition=i % 2)
         messages_and_futures.append((encoded_msg, future))
     producer.flush()
